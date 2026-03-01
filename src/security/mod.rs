@@ -7,6 +7,7 @@
 
 use anyhow::Result;
 
+#[allow(dead_code)]
 pub fn run() -> Result<()> {
     todo!()
 }
