@@ -20,7 +20,7 @@
   - Acceptance: remote configured, initial scaffold pushed to main, branch protection on main enabled
   - Depends on: Verify make test
 
-- [ ] **Push scaffold branch and open PR** [foundation] S
+- [x] **Push scaffold branch and open PR** [foundation] S
   - Acceptance: `chore/scaffold` pushed, PR opened, developer confirms PR is merged
   - Depends on: Set up GitHub repository
 
