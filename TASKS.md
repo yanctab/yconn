@@ -35,19 +35,19 @@
 ## Implementation
 > Start only after all Foundation tasks are checked off.
 
-- [ ] **Implement display module** [core] L
+- [x] **Implement display module** [core] L
   - Acceptance: `src/display/` renders `list` table (with `--all` shadowed entries), `show` detail block, `config` status block, `group list` table, `group current` block, `--verbose` log lines; supports `--no-color` flag; no other module writes to stdout directly; unit tests cover each output format
   - Depends on: Foundation complete
 
-- [ ] **Implement group module** [core] M
+- [x] **Implement group module** [core] M
   - Acceptance: `src/group/` reads `~/.config/yconn/session.yml` (unknown keys ignored, missing file treated as default); writes `active_group` to session file; resolves active group name (default `connections`); scans all three layer directories to discover available group names; unit tests cover: read with key present, read with file absent, read with unknown keys, write, group discovery across layers
   - Depends on: Implement display module
 
-- [ ] **Implement security module** [core] M
+- [x] **Implement security module** [core] M
   - Acceptance: `src/security/` checks config file permissions (warns if world-readable); detects credential fields (`password`, `passphrase`, etc.) in git-trackable layers (`.yconn/`) and emits a non-blocking warning; warns if `docker` block found in user-level config; key file existence and permission check before connect; all warnings routed through `display`; unit tests cover each warning scenario
   - Depends on: Implement display module
 
-- [ ] **Implement config module** [core] L
+- [x] **Implement config module** [core] L
   - Acceptance: `src/config/` loads `<group>.yaml` from each of the three layers (project via upward walk stopping at `$HOME`/root, user, system); merges into a flat connection map with source tracking; higher-priority layer wins on name collision; shadowed entries retained for `--all`; extracts the resolved `docker` block (only from project/system layers — ignores user layer); delegates active group resolution to `group` module; delegates security validation to `security` module; unit tests cover: single layer, all three layers, name collision priority (all seven scenarios from CLAUDE.md), upward walk (finds at repo root, stops at home, no config found), docker block per layer, missing layer files silently skipped
   - Depends on: Implement group module, Implement security module
 
