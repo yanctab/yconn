@@ -1,32 +1,38 @@
-# Makefile — targets implemented by project type initialisation
-# Do not edit targets directly — run /init-<type> to implement them
+# Makefile
 
 .PHONY: build lint test clean release package docs
 
+BINARY := $(shell grep '^name' Cargo.toml | head -1 | sed 's/.*= "//' | sed 's/"//')
+VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*= "//' | sed 's/"//')
+TARGET := x86_64-unknown-linux-musl
+
 build:
-	@echo "build: not implemented — run /init-<type>"
-	@exit 1
+	cargo build --release --target $(TARGET)
 
 lint:
-	@echo "lint: not implemented — run /init-<type>"
-	@exit 1
+	cargo fmt --check
+	cargo clippy -- -D warnings
 
 test:
-	@echo "test: not implemented — run /init-<type>"
-	@exit 1
+	cargo test
 
 clean:
-	@echo "clean: not implemented — run /init-<type>"
-	@exit 1
+	cargo clean
 
 release:
-	@echo "release: not implemented — run /init-<type>"
-	@exit 1
+	git tag v$(VERSION)
+	git push origin v$(VERSION)
 
 package:
-	@echo "package: not implemented — run /init-<type>"
-	@exit 1
+	$(MAKE) build
+	$(MAKE) build-deb
+	$(MAKE) build-aur
 
 docs:
-	@echo "docs: not implemented — run /init-<type>"
-	@exit 1
+	pandoc docs/man/$(BINARY).1.md -s -t man -o docs/man/$(BINARY).1
+
+build-deb:
+	@scripts/build-deb.sh $(BINARY) $(VERSION)
+
+build-aur:
+	@scripts/build-aur.sh $(BINARY) $(VERSION)
