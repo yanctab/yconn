@@ -2,6 +2,5 @@ Package: BINARY_PLACEHOLDER
 Version: VERSION_PLACEHOLDER
 Architecture: amd64
 Maintainer: MAINTAINER_PLACEHOLDER
+Depends: openssh-client
 Description: DESCRIPTION_PLACEHOLDER
-# TODO: Add Depends: field once runtime requirements are known
-# Example: Depends: libssl3 (>= 3.0), openssh-client
