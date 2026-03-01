@@ -24,11 +24,11 @@
   - Acceptance: `chore/scaffold` pushed, PR opened, developer confirms PR is merged
   - Depends on: Set up GitHub repository
 
-- [ ] **Verify CI pipeline is live** [foundation] S
+- [x] **Verify CI pipeline is live** [foundation] S
   - Acceptance: test PR opened, `ci.yml` runs end to end, all checks pass
   - Depends on: Push scaffold branch and open PR
 
-- [ ] **Verify make package runs in CI** [foundation] M
+- [x] **Verify make package runs in CI** [foundation] M
   - Acceptance: `release.yml` triggered by test tag `v0.0.1-test`, binary + `.deb` + `PKGBUILD` present in GitHub Release; test tag deleted after verification
   - Depends on: Verify CI pipeline is live
 
