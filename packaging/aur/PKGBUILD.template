@@ -1,0 +1,20 @@
+# TODO: Review before first AUR release:
+#   - Replace sha256sums SKIP with real checksums
+#   - Add optdepends if any optional runtime tools are needed
+#   - Add any extra install steps (completions, config files, etc.)
+pkgname=BINARY_PLACEHOLDER
+pkgver=VERSION_PLACEHOLDER
+pkgrel=1
+pkgdesc='DESCRIPTION_PLACEHOLDER'
+arch=('x86_64')
+url='https://github.com/OWNER_PLACEHOLDER/REPO_PLACEHOLDER'
+license=('MIT')
+source=("$pkgname-$pkgver::$url/releases/download/v$pkgver/$pkgname")
+sha256sums=('SKIP')
+
+package() {
+    install -Dm755 "$srcdir/$pkgname-$pkgver" "$pkgdir/usr/bin/$pkgname"
+    # TODO: add man page once docs/man/<binary>.1 is generated
+    # install -Dm644 "$srcdir/BINARY_PLACEHOLDER.1" \
+    #     "$pkgdir/usr/share/man/man1/BINARY_PLACEHOLDER.1"
+}
