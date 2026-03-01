@@ -55,7 +55,7 @@
   - Acceptance: `src/connect/` builds SSH invocation arguments from a resolved connection entry: `key` auth produces `ssh [-i key] [-p port] user@host`; `password` auth produces `ssh [-p port] user@host` (no `-i`, no password arg); replaces the current process via `execvp`; unit tests cover all four SSH arg scenarios from CLAUDE.md
   - Depends on: Implement config module
 
-- [ ] **Implement docker module** [core] M
+- [x] **Implement docker module** [core] M
   - Acceptance: `src/docker/` detects container via `/.dockerenv` existence and `CONN_IN_DOCKER=1` env var; builds `docker run` command with exact mounts from CLAUDE.md (binary ro, `/etc/yconn` ro, `~/.config/yconn` rw, `$(pwd)` ro); injects `CONN_IN_DOCKER=1`; appends user `args` before image name; honours `pull` field; names container `yconn-connection-<pid>`; replaces current process via `execvp`; `--verbose` output routed through `display`; unit tests cover all nine Docker bootstrap scenarios from CLAUDE.md
   - Depends on: Implement config module
 
