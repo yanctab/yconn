@@ -1,10 +1,11 @@
 # Makefile
 
-.PHONY: build lint fmt fmt-check test clean release package docs publish help
+.PHONY: build install lint fmt fmt-check test clean release package docs publish help
 
 BINARY := $(shell grep '^name' Cargo.toml | head -1 | sed 's/.*= "//' | sed 's/"//')
 VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*= "//' | sed 's/"//')
 TARGET := x86_64-unknown-linux-musl
+PREFIX ?= /usr/local
 
 ## help - show available targets
 help:
@@ -13,6 +14,13 @@ help:
 ## build - compile a static musl release binary
 build:
 	cargo build --release --target $(TARGET)
+
+## install - install binary (and man page if built) to PREFIX=/usr/local — use sudo for system paths
+install: build
+	install -Dm755 target/$(TARGET)/release/$(BINARY) $(PREFIX)/bin/$(BINARY)
+	@if [ -f docs/man/$(BINARY).1 ]; then \
+		install -Dm644 docs/man/$(BINARY).1 $(PREFIX)/share/man/man1/$(BINARY).1; \
+	fi
 
 ## fmt - auto-format code with cargo fmt
 fmt:

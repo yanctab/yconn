@@ -102,3 +102,19 @@
   - Create: docs/configuration.md, docs/examples.md
   - Reuse: config/connections.yaml (example YAML to draw from), docs/man/yconn.1.md (existing reference content to avoid duplicating)
   - Risks: README must remain a useful standalone entry point on GitHub — do not over-strip it; avoid duplicating man page content verbatim; relative links (e.g. `[Configuration](docs/configuration.md)`) must use paths relative to the repo root to work on GitHub
+
+- [x] **Add make install target** [packaging] S
+  - Acceptance: `make install` depends on `build`, installs the binary to `$(PREFIX)/bin/$(BINARY)` (default `PREFIX=/usr/local`) using `install -Dm755`, and installs the man page to `$(PREFIX)/share/man/man1/$(BINARY).1` if `docs/man/$(BINARY).1` exists; the `## install` help comment notes that `sudo` is needed for system-level `PREFIX` paths; `make install` exits 0 and `yconn --help` works afterwards; README.md from-source section is updated to show `make install` as the installation step
+  - Depends on: Create docs directory with configuration reference and examples
+  - Modify: Makefile, README.md
+  - Create: none
+  - Reuse: Makefile:BINARY (name extraction), Makefile:build (dependency), packaging/aur/PKGBUILD.template (install -Dm755 pattern)
+  - Risks: man page install must be conditional on `docs/man/$(BINARY).1` existing (make docs may not have been run); help comment should mention `sudo make install` for /usr/local; do not hardcode /usr/local — use PREFIX variable
+
+- [ ] **Update README installation instructions for Arch and Debian pre-built packages** [docs] S
+  - Acceptance: Arch Linux section replaces `yay -S yconn` with both a one-step `sudo pacman -U <github-release-url>` form and a two-step `wget`/`curl` download + `sudo pacman -U ./yconn-VERSION-1-x86_64.pkg.tar.zst` form; Debian/Ubuntu section is updated with a `wget`/`curl` download command and `sudo dpkg -i yconn_VERSION_amd64.deb` (or `sudo apt install ./yconn_VERSION_amd64.deb`) install step; all URLs use the correct `yanctab/yconn` repository (fixing the stale `mans/yconn` reference); version placeholders use a clearly-labelled variable (e.g. `VERSION=1.2.0`) so examples stay meaningful without going stale
+  - Depends on: Add make install target
+  - Modify: README.md
+  - Create: none
+  - Reuse: scripts/build-pkg.sh:OUTFILE (Arch filename pattern yconn-VERSION-1-x86_64.pkg.tar.zst), scripts/build-deb.sh:PKG (Debian filename pattern yconn_VERSION_amd64.deb)
+  - Risks: version numbers in shell examples will go stale — use a `VERSION=x.y.z` variable assignment before the download command so users only need to update one line; pacman -U with a URL fetches and installs in one step — note this requires network access
