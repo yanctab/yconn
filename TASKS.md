@@ -111,7 +111,7 @@
   - Reuse: Makefile:BINARY (name extraction), Makefile:build (dependency), packaging/aur/PKGBUILD.template (install -Dm755 pattern)
   - Risks: man page install must be conditional on `docs/man/$(BINARY).1` existing (make docs may not have been run); help comment should mention `sudo make install` for /usr/local; do not hardcode /usr/local — use PREFIX variable
 
-- [ ] **Update README installation instructions for Arch and Debian pre-built packages** [docs] S
+- [x] **Update README installation instructions for Arch and Debian pre-built packages** [docs] S
   - Acceptance: Arch Linux section replaces `yay -S yconn` with both a one-step `sudo pacman -U <github-release-url>` form and a two-step `wget`/`curl` download + `sudo pacman -U ./yconn-VERSION-1-x86_64.pkg.tar.zst` form; Debian/Ubuntu section is updated with a `wget`/`curl` download command and `sudo dpkg -i yconn_VERSION_amd64.deb` (or `sudo apt install ./yconn_VERSION_amd64.deb`) install step; all URLs use the correct `yanctab/yconn` repository (fixing the stale `mans/yconn` reference); version placeholders use a clearly-labelled variable (e.g. `VERSION=1.2.0`) so examples stay meaningful without going stale
   - Depends on: Add make install target
   - Modify: README.md
