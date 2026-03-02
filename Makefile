@@ -1,6 +1,6 @@
 # Makefile
 
-.PHONY: build install lint fmt fmt-check test coverage clean release package docs publish help
+.PHONY: build install setup lint fmt fmt-check test coverage clean release package docs publish help
 
 BINARY := $(shell grep '^name' Cargo.toml | head -1 | sed 's/.*= "//' | sed 's/"//')
 VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*= "//' | sed 's/"//')
@@ -10,6 +10,15 @@ PREFIX ?= /usr/local
 ## help - show available targets
 help:
 	@grep -E '^## [a-zA-Z_-]+ - ' Makefile | awk 'BEGIN {FS=" - "} {printf "  %-15s %s\n", substr($$1, 4), $$2}'
+
+## setup - install Rust toolchain components and cargo-llvm-cov for local development
+setup:
+	rustup component add rustfmt clippy llvm-tools-preview
+	rustup target add x86_64-unknown-linux-musl
+	cargo install cargo-llvm-cov --locked
+	@echo ""
+	@echo "System packages required (install manually):"
+	@echo "  sudo apt-get install -y musl-tools pandoc zstd"
 
 ## build - compile a static musl release binary
 build:

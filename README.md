@@ -92,7 +92,12 @@ Global flags: `--layer system|user|project`, `--all`, `--verbose`, `--no-color`
 
 ## Development
 
-```
+```bash
+# First-time setup (installs Rust components and cargo-llvm-cov)
+make setup
+# System packages also required:
+sudo apt-get install -y musl-tools pandoc zstd
+
 make build    # compile (musl static binary)
 make test     # run tests
 make lint     # cargo fmt --check + clippy
