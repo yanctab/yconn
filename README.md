@@ -11,15 +11,34 @@ Connections live in YAML files at three layers (project, user, system). Higher l
 
 ## Installation
 
-### Arch Linux (AUR)
+### Arch Linux
+
+One-step (pacman fetches and installs directly from the release URL):
+```bash
+VERSION=1.2.0
+sudo pacman -U "https://github.com/yanctab/yconn/releases/download/v${VERSION}/yconn-${VERSION}-1-x86_64.pkg.tar.zst"
 ```
-yay -S yconn
+
+Two-step (download first, then install):
+```bash
+VERSION=1.2.0
+wget "https://github.com/yanctab/yconn/releases/download/v${VERSION}/yconn-${VERSION}-1-x86_64.pkg.tar.zst"
+sudo pacman -U "yconn-${VERSION}-1-x86_64.pkg.tar.zst"
+```
+
+Or with curl:
+```bash
+VERSION=1.2.0
+curl -LO "https://github.com/yanctab/yconn/releases/download/v${VERSION}/yconn-${VERSION}-1-x86_64.pkg.tar.zst"
+sudo pacman -U "yconn-${VERSION}-1-x86_64.pkg.tar.zst"
 ```
 
 ### Debian / Ubuntu
-Download the latest `.deb` from the [releases page](https://github.com/mans/yconn/releases) and install:
-```
-sudo dpkg -i yconn_0.1.0_amd64.deb
+
+```bash
+VERSION=1.2.0
+wget "https://github.com/yanctab/yconn/releases/download/v${VERSION}/yconn_${VERSION}_amd64.deb"
+sudo apt install "./yconn_${VERSION}_amd64.deb"
 ```
 
 ### From source
