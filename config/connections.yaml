@@ -1,0 +1,35 @@
+version: 1
+
+# Optional: re-invoke yconn inside Docker so SSH keys stay in the image.
+# Remove this block if you are not using Docker-based key distribution.
+#
+# docker:
+#   image: ghcr.io/myorg/yconn-keys:latest
+#   pull: missing   # "always" | "missing" (default) | "never"
+#   args:
+#     - "--network=host"
+
+connections:
+  prod-web:
+    host: 10.0.1.50
+    user: deploy
+    port: 22
+    auth: key
+    key: ~/.ssh/prod_deploy_key
+    description: "Primary production web server"
+    link: https://wiki.internal/servers/prod-web
+
+  staging-db:
+    host: staging.internal
+    user: dbadmin
+    auth: password
+    description: "Staging database server — use with caution"
+    link: https://wiki.internal/servers/staging-db
+
+  bastion:
+    host: bastion.example.com
+    user: ec2-user
+    port: 2222
+    auth: key
+    key: ~/.ssh/bastion_key
+    description: "Bastion host — jump point for internal network"
