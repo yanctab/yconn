@@ -45,7 +45,10 @@ fn main() -> Result<()> {
             GroupCommands::Use { name } => commands::group::use_group(&name),
             GroupCommands::Clear => commands::group::clear(),
         },
-        Commands::Connect { name } => commands::connect::run(&name),
+        Commands::Connect { name } => {
+            let cfg = load_and_warn(&renderer, verbose)?;
+            commands::connect::run(&cfg, &renderer, &name, verbose)
+        }
         Commands::Add => commands::add::run(),
         Commands::Edit { name } => commands::edit::run(&name),
         Commands::Remove { name } => commands::remove::run(&name),
