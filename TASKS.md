@@ -63,7 +63,7 @@
   - Acceptance: `yconn list` (with and without `--all`), `yconn show <name>`, `yconn config`, `yconn group list`, `yconn group current` all produce output matching the exact formats specified in CLAUDE.md; global flags `--no-color` and `--verbose` respected; missing connection name returns a clear error; integration tests exercise each command with a real temp config on disk
   - Depends on: Implement display module, Implement config module, Implement connect module, Implement docker module
 
-- [ ] **Implement connect command with Docker bootstrap** [cli] M
+- [x] **Implement connect command with Docker bootstrap** [cli] M
   - Acceptance: `yconn connect <name>` resolves the connection, runs the Docker bootstrap path when `docker.image` is configured and not already in a container, otherwise invokes SSH directly; unknown name returns a clear error; integration tests cover the Docker and non-Docker paths using exec interception (no real SSH or Docker invocations)
   - Depends on: Implement read-only CLI commands, Implement connect module, Implement docker module
 
