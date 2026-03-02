@@ -127,7 +127,7 @@
   - Reuse: Makefile:test (target to extend with coverage call), .github/workflows/ci.yml:dtolnay/rust-toolchain (add llvm-tools-preview component)
   - Risks: `cargo-llvm-cov` must be installed on both CI and local machines — CI step must run `cargo install cargo-llvm-cov --locked` before `make test`; the musl TARGET in the Makefile is not used by `make test` (plain `cargo test`), so llvm-cov should work without musl flags; adding coverage as last step of test means a cold dev machine without the tool will fail `make test` — acceptable if the error message is clear
 
-- [ ] **Add make setup target for developer environment bootstrap** [packaging] S
+- [x] **Add make setup target for developer environment bootstrap** [packaging] S
   - Acceptance: `make setup` installs all Rust toolchain prerequisites in one command: runs `rustup component add rustfmt clippy llvm-tools-preview`, `rustup target add x86_64-unknown-linux-musl`, and `cargo install cargo-llvm-cov --locked`; it also prints a note listing the required system packages (`musl-tools`, `pandoc`, `zstd`) with the apt install command for reference, since those cannot be installed without sudo in a portable way; `make help` shows the setup target with an accurate description; README.md Development section documents `make setup` as the first step for new contributors, followed by the system package install command
   - Depends on: Add make coverage target and call it from make test
   - Modify: Makefile, README.md
