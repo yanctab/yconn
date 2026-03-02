@@ -23,11 +23,15 @@ sudo dpkg -i yconn_0.1.0_amd64.deb
 ```
 
 ### From source
-```
-cargo build --release --target x86_64-unknown-linux-musl
+```bash
+git clone https://github.com/yanctab/yconn.git
+cd yconn
+make build
+sudo make install          # installs to /usr/local/bin/yconn
+# or: make install PREFIX=~/.local   # installs to ~/.local/bin/yconn (no sudo needed)
 ```
 
-The compiled binary is placed at `target/x86_64-unknown-linux-musl/release/yconn`.
+The man page is also installed if you have run `make docs` first.
 
 ## Quick start
 
