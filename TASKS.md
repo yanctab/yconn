@@ -118,3 +118,19 @@
   - Create: none
   - Reuse: scripts/build-pkg.sh:OUTFILE (Arch filename pattern yconn-VERSION-1-x86_64.pkg.tar.zst), scripts/build-deb.sh:PKG (Debian filename pattern yconn_VERSION_amd64.deb)
   - Risks: version numbers in shell examples will go stale — use a `VERSION=x.y.z` variable assignment before the download command so users only need to update one line; pacman -U with a URL fetches and installs in one step — note this requires network access
+
+- [x] **Add make coverage target and call it from make test** [test] S
+  - Acceptance: `make coverage` runs `cargo llvm-cov --summary-only`, prints the coverage percentage to stdout, and exits 0; `make test` calls `$(MAKE) coverage` as its last step; the `## coverage` and `## test` help comments are updated to reflect this; CI workflow (`.github/workflows/ci.yml`) adds `llvm-tools-preview` to the `dtolnay/rust-toolchain` components and installs `cargo-llvm-cov` before running `make test` so CI continues to pass; if `cargo-llvm-cov` is not installed locally, `make coverage` fails with a clear message directing the user to run `cargo install cargo-llvm-cov`
+  - Depends on: Update README installation instructions for Arch and Debian pre-built packages
+  - Modify: Makefile, .github/workflows/ci.yml
+  - Create: none
+  - Reuse: Makefile:test (target to extend with coverage call), .github/workflows/ci.yml:dtolnay/rust-toolchain (add llvm-tools-preview component)
+  - Risks: `cargo-llvm-cov` must be installed on both CI and local machines — CI step must run `cargo install cargo-llvm-cov --locked` before `make test`; the musl TARGET in the Makefile is not used by `make test` (plain `cargo test`), so llvm-cov should work without musl flags; adding coverage as last step of test means a cold dev machine without the tool will fail `make test` — acceptable if the error message is clear
+
+- [ ] **Add make setup target for developer environment bootstrap** [packaging] S
+  - Acceptance: `make setup` installs all Rust toolchain prerequisites in one command: runs `rustup component add rustfmt clippy llvm-tools-preview`, `rustup target add x86_64-unknown-linux-musl`, and `cargo install cargo-llvm-cov --locked`; it also prints a note listing the required system packages (`musl-tools`, `pandoc`, `zstd`) with the apt install command for reference, since those cannot be installed without sudo in a portable way; `make help` shows the setup target with an accurate description; README.md Development section documents `make setup` as the first step for new contributors, followed by the system package install command
+  - Depends on: Add make coverage target and call it from make test
+  - Modify: Makefile, README.md
+  - Create: none
+  - Reuse: .github/workflows/release.yml (exact apt packages: musl-tools pandoc zstd; exact rustup target: x86_64-unknown-linux-musl), .github/workflows/ci.yml (rustfmt clippy components)
+  - Risks: system package install cannot be automated portably — print the apt command as a hint rather than running it; all rustup and cargo install commands are idempotent so re-running setup is safe; cargo install may be slow on first run — acceptable for a one-time setup target

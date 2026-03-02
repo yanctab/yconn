@@ -1,6 +1,6 @@
 # Makefile
 
-.PHONY: build install lint fmt fmt-check test clean release package docs publish help
+.PHONY: build install lint fmt fmt-check test coverage clean release package docs publish help
 
 BINARY := $(shell grep '^name' Cargo.toml | head -1 | sed 's/.*= "//' | sed 's/"//')
 VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*= "//' | sed 's/"//')
@@ -35,9 +35,15 @@ lint:
 	$(MAKE) fmt-check
 	cargo clippy -- -D warnings
 
-## test - run the test suite
+## test - run the test suite and print coverage summary
 test:
 	cargo test
+	$(MAKE) coverage
+
+## coverage - print code coverage summary (requires cargo-llvm-cov)
+coverage:
+	@command -v cargo-llvm-cov >/dev/null 2>&1 || (echo "cargo-llvm-cov not found — run: cargo install cargo-llvm-cov --locked" && exit 1)
+	cargo llvm-cov --summary-only
 
 ## clean - remove build artifacts
 clean:
