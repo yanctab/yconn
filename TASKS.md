@@ -59,7 +59,7 @@
   - Acceptance: `src/docker/` detects container via `/.dockerenv` existence and `CONN_IN_DOCKER=1` env var; builds `docker run` command with exact mounts from CLAUDE.md (binary ro, `/etc/yconn` ro, `~/.config/yconn` rw, `$(pwd)` ro); injects `CONN_IN_DOCKER=1`; appends user `args` before image name; honours `pull` field; names container `yconn-connection-<pid>`; replaces current process via `execvp`; `--verbose` output routed through `display`; unit tests cover all nine Docker bootstrap scenarios from CLAUDE.md
   - Depends on: Implement config module
 
-- [ ] **Implement read-only CLI commands** [cli] M
+- [x] **Implement read-only CLI commands** [cli] M
   - Acceptance: `yconn list` (with and without `--all`), `yconn show <name>`, `yconn config`, `yconn group list`, `yconn group current` all produce output matching the exact formats specified in CLAUDE.md; global flags `--no-color` and `--verbose` respected; missing connection name returns a clear error; integration tests exercise each command with a real temp config on disk
   - Depends on: Implement display module, Implement config module, Implement connect module, Implement docker module
 
