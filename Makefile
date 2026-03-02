@@ -1,6 +1,6 @@
 # Makefile
 
-.PHONY: build lint test clean release package docs
+.PHONY: build lint fmt fmt-check test clean release package docs
 
 BINARY := $(shell grep '^name' Cargo.toml | head -1 | sed 's/.*= "//' | sed 's/"//')
 VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*= "//' | sed 's/"//')
@@ -9,8 +9,14 @@ TARGET := x86_64-unknown-linux-musl
 build:
 	cargo build --release --target $(TARGET)
 
-lint:
+fmt:
+	cargo fmt
+
+fmt-check:
 	cargo fmt --check
+
+lint:
+	$(MAKE) fmt-check
 	cargo clippy -- -D warnings
 
 test:
