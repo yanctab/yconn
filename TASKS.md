@@ -134,3 +134,11 @@
   - Create: none
   - Reuse: .github/workflows/release.yml (exact apt packages: musl-tools pandoc zstd; exact rustup target: x86_64-unknown-linux-musl), .github/workflows/ci.yml (rustfmt clippy components)
   - Risks: system package install cannot be automated portably — print the apt command as a hint rather than running it; all rustup and cargo install commands are idempotent so re-running setup is safe; cargo install may be slow on first run — acceptable for a one-time setup target
+
+- [x] **Auto-install system dependencies in make setup using distro detection** [packaging] S
+  - Acceptance: `scripts/install-deps.sh` detects the Linux distribution from `/etc/os-release` (`ID` and `ID_LIKE` fields) and installs the required system packages automatically — `sudo apt-get install -y musl-tools pandoc zstd` on Debian/Ubuntu/derivatives, `sudo pacman -S --noconfirm musl pandoc zstd` on Arch Linux; if the distro is unsupported the script exits 1 with a clear message listing the packages to install manually; `make setup` calls `scripts/install-deps.sh` instead of printing the static apt hint; `make test` passes
+  - Depends on: Add make setup target for developer environment bootstrap
+  - Modify: Makefile
+  - Create: scripts/install-deps.sh
+  - Reuse: scripts/build-pkg.sh (set -euo pipefail pattern), .github/workflows/release.yml (Debian package names: musl-tools pandoc zstd)
+  - Risks: script requires sudo — will prompt for password interactively; Arch package name is `musl` not `musl-tools`; `/etc/os-release` ID_LIKE check needed for Ubuntu (ID=ubuntu, ID_LIKE=debian) and derivatives like Mint; script must be chmod +x
