@@ -42,7 +42,10 @@ fn main() -> Result<()> {
                 let cfg = load_and_warn(&renderer, verbose)?;
                 commands::group::current(&cfg, &renderer)
             }
-            GroupCommands::Use { name } => commands::group::use_group(&name),
+            GroupCommands::Use { name } => {
+                let cfg = load_and_warn(&renderer, verbose)?;
+                commands::group::use_group(&name, &cfg, &renderer)
+            }
             GroupCommands::Clear => commands::group::clear(),
         },
         Commands::Connect { name } => {
