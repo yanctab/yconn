@@ -57,7 +57,7 @@ fn session_path() -> Result<PathBuf> {
 
 // ─── Private I/O helpers (also used directly by tests) ───────────────────────
 
-fn read_session_at(path: &Path) -> Result<ActiveGroup> {
+pub(crate) fn read_session_at(path: &Path) -> Result<ActiveGroup> {
     if !path.exists() {
         return Ok(ActiveGroup {
             name: DEFAULT_GROUP.into(),
@@ -83,7 +83,7 @@ fn read_session_at(path: &Path) -> Result<ActiveGroup> {
     }
 }
 
-fn write_session_at(path: &Path, group: Option<&str>) -> Result<()> {
+pub(crate) fn write_session_at(path: &Path, group: Option<&str>) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create directory {}", parent.display()))?;

@@ -51,7 +51,7 @@
   - Acceptance: `src/config/` loads `<group>.yaml` from each of the three layers (project via upward walk stopping at `$HOME`/root, user, system); merges into a flat connection map with source tracking; higher-priority layer wins on name collision; shadowed entries retained for `--all`; extracts the resolved `docker` block (only from project/system layers — ignores user layer); delegates active group resolution to `group` module; delegates security validation to `security` module; unit tests cover: single layer, all three layers, name collision priority (all seven scenarios from CLAUDE.md), upward walk (finds at repo root, stops at home, no config found), docker block per layer, missing layer files silently skipped
   - Depends on: Implement group module, Implement security module
 
-- [ ] **Implement connect module** [core] M
+- [x] **Implement connect module** [core] M
   - Acceptance: `src/connect/` builds SSH invocation arguments from a resolved connection entry: `key` auth produces `ssh [-i key] [-p port] user@host`; `password` auth produces `ssh [-p port] user@host` (no `-i`, no password arg); replaces the current process via `execvp`; unit tests cover all four SSH arg scenarios from CLAUDE.md
   - Depends on: Implement config module
 
@@ -67,7 +67,7 @@
   - Acceptance: `yconn connect <name>` resolves the connection, runs the Docker bootstrap path when `docker.image` is configured and not already in a container, otherwise invokes SSH directly; unknown name returns a clear error; integration tests cover the Docker and non-Docker paths using exec interception (no real SSH or Docker invocations)
   - Depends on: Implement read-only CLI commands, Implement connect module, Implement docker module
 
-- [ ] **Implement group mutating commands** [cli] S
+- [x] **Implement group mutating commands** [cli] S
   - Acceptance: `yconn group use <name>` writes `active_group` to `session.yml` and warns if no config file for that group exists in any layer (but does not block); `yconn group clear` removes `active_group` from `session.yml`; integration tests cover all five group scenarios from CLAUDE.md
   - Depends on: Implement read-only CLI commands
 
