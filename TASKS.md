@@ -75,7 +75,7 @@
   - Acceptance: `yconn add` interactive wizard prompts for all required fields and writes a valid entry to the chosen layer; `yconn edit <name>` opens the connection's source config file in `$EDITOR`; `yconn remove <name>` removes the entry and prompts for layer if the name is ambiguous; `yconn init` scaffolds a `<group>.yaml` in `.yconn/` of the current directory; `--layer` flag respected by `add`, `edit`, `remove`; integration tests cover add/remove round-trip and layer targeting
   - Depends on: Implement group mutating commands
 
-- [ ] **Finalize .deb packaging** [packaging] M
+- [x] **Finalize .deb packaging** [packaging] M
   - Acceptance: `packaging/deb/control` has real maintainer, description, and a `Depends: openssh-client` runtime dependency; `scripts/build-deb.sh` installs the binary to `/usr/bin`, the man page to `/usr/share/man/man1/`, and example config to `/usr/share/doc/yconn/`; `make package` produces a `.deb` that installs cleanly and `yconn --help` works after install
   - Depends on: Implement mutating connection commands
 
