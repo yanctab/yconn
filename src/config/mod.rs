@@ -175,8 +175,9 @@ pub fn load_from(cwd: &Path) -> Result<LoadedConfig> {
 /// One element of the three-layer raw-connection array: (connections, layer, source path).
 type RawLayer = (Vec<(String, RawConn)>, Layer, PathBuf);
 
-/// Core load logic with all paths explicit — used directly by tests.
-fn load_impl(
+/// Core load logic with all paths explicit — used directly by tests and
+/// command-layer integration tests.
+pub(crate) fn load_impl(
     cwd: &Path,
     group: &str,
     group_from_file: bool,
