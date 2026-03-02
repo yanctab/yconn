@@ -40,11 +40,11 @@ release:
 	git tag v$(VERSION)
 	git push origin v$(VERSION)
 
-## package - build .deb and AUR packages from the release binary
+## package - build .deb and Arch .pkg.tar.zst from the release binary
 package:
 	$(MAKE) build
 	$(MAKE) build-deb
-	$(MAKE) build-aur
+	$(MAKE) build-pkg
 
 ## docs - generate man page from markdown source
 docs:
@@ -53,8 +53,8 @@ docs:
 build-deb:
 	@scripts/build-deb.sh $(BINARY) $(VERSION)
 
-build-aur:
-	@scripts/build-aur.sh $(BINARY) $(VERSION)
+build-pkg:
+	@scripts/build-pkg.sh $(BINARY) $(VERSION)
 
 ## publish - publish the crate to crates.io
 publish: lint test
