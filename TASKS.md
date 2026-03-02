@@ -71,7 +71,7 @@
   - Acceptance: `yconn group use <name>` writes `active_group` to `session.yml` and warns if no config file for that group exists in any layer (but does not block); `yconn group clear` removes `active_group` from `session.yml`; integration tests cover all five group scenarios from CLAUDE.md
   - Depends on: Implement read-only CLI commands
 
-- [ ] **Implement mutating connection commands** [cli] M
+- [x] **Implement mutating connection commands** [cli] M
   - Acceptance: `yconn add` interactive wizard prompts for all required fields and writes a valid entry to the chosen layer; `yconn edit <name>` opens the connection's source config file in `$EDITOR`; `yconn remove <name>` removes the entry and prompts for layer if the name is ambiguous; `yconn init` scaffolds a `<group>.yaml` in `.yconn/` of the current directory; `--layer` flag respected by `add`, `edit`, `remove`; integration tests cover add/remove round-trip and layer targeting
   - Depends on: Implement group mutating commands
 

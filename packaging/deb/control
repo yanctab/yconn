@@ -1,6 +1,16 @@
 Package: BINARY_PLACEHOLDER
 Version: VERSION_PLACEHOLDER
 Architecture: amd64
-Maintainer: MAINTAINER_PLACEHOLDER
+Maintainer: Mans <mans@example.com>
 Depends: openssh-client
-Description: DESCRIPTION_PLACEHOLDER
+Description: SSH connection manager CLI
+ yconn is a CLI tool for managing SSH connections across teams and projects.
+ It uses a layered config system inspired by git and ssh, supports key-based
+ and password-based auth, and is designed to be shareable in DevOps
+ environments without ever exposing credentials.
+ .
+ Connections are defined in YAML files loaded from three layers: project
+ (git-tracked), user (~/.config/yconn/), and system (/etc/yconn/). Higher
+ priority layers override lower ones on name collision. When a docker block
+ is configured, yconn re-invokes itself inside a container so SSH keys can
+ be pre-baked into an image rather than distributed to developer machines.
