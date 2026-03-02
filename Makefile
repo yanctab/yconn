@@ -35,10 +35,22 @@ test:
 clean:
 	cargo clean
 
-## release - tag the current version in Cargo.toml and push to trigger the release pipeline
+## release - bump minor version, commit, tag, and push to trigger the release pipeline
 release:
-	git tag v$(VERSION)
-	git push origin v$(VERSION)
+	@git fetch --tags
+	@LATEST=$$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | head -1); \
+	if [ -z "$$LATEST" ]; then echo "error: no semver tag found"; exit 1; fi; \
+	MAJOR=$$(echo "$$LATEST" | sed 's/^v//' | cut -d. -f1); \
+	MINOR=$$(echo "$$LATEST" | sed 's/^v//' | cut -d. -f2); \
+	NEW_MINOR=$$((MINOR + 1)); \
+	NEW_VERSION="$$MAJOR.$$NEW_MINOR.0"; \
+	echo "Bumping $$LATEST -> v$$NEW_VERSION"; \
+	sed -i "s/^version = \".*\"/version = \"$$NEW_VERSION\"/" Cargo.toml; \
+	cargo update -p yconn; \
+	git add Cargo.toml Cargo.lock; \
+	git commit -m "yconn v$$NEW_VERSION"; \
+	git tag "v$$NEW_VERSION"; \
+	git push origin HEAD "v$$NEW_VERSION"
 
 ## package - build .deb and Arch .pkg.tar.zst from the release binary
 package:
