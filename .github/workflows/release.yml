@@ -16,13 +16,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-musl
-      - run: sudo apt-get install -y musl-tools
+      - run: sudo apt-get install -y musl-tools pandoc
       - run: make build
+      - run: make docs
       - run: make package
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             target/x86_64-unknown-linux-musl/release/${{ env.BINARY }}
+            docs/man/${{ env.BINARY }}.1
             dist/*.deb
             dist/PKGBUILD
