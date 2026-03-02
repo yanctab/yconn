@@ -86,3 +86,11 @@
 - [x] **Publish to crates.io** [packaging] S
   - Acceptance: `Cargo.toml` has required crates.io fields (`description`, `license`) plus discoverability fields (`repository`, `homepage`, `readme`, `keywords`, `categories`); `LICENSE` file present (MIT, 2026, yanctab); `make publish` target runs lint + test then `cargo publish`; `cargo publish --dry-run` exits 0; release CI (`release.yml`) runs `cargo publish` after GitHub Release step using `CARGO_REGISTRY_TOKEN` secret
   - Depends on: Finalize AUR PKGBUILD
+
+- [x] **Automate version bump in make release target** [packaging] S
+  - Acceptance: `make release` runs `git fetch --tags`, finds the latest semver tag, increments its minor component (resetting patch to 0), updates `version = "..."` in `Cargo.toml`, runs `cargo update -p yconn` to sync `Cargo.lock`, commits with message `yconn v<new-version>`, creates `v<new-version>` tag, and pushes commit + tag to origin; the `## release` help comment in the Makefile is updated to describe the new behaviour; `make help` output reflects this; no manual version edits are needed before running `make release`
+  - Depends on: Publish to crates.io
+  - Modify: Makefile
+  - Create: none
+  - Reuse: Makefile:VERSION (grep+sed extraction pattern), Makefile:release (target to be replaced)
+  - Risks: `sed -i` syntax differs between GNU and BSD/macOS — use `sed -i ''` guard or restrict to Linux; minor bump must reset patch to 0; `git fetch --tags` requires network access — the target should fail fast if fetch fails
