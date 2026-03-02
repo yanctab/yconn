@@ -35,7 +35,7 @@ test:
 clean:
 	cargo clean
 
-## release - tag the current version and push to trigger the release pipeline
+## release - tag the current version in Cargo.toml and push to trigger the release pipeline
 release:
 	git tag v$(VERSION)
 	git push origin v$(VERSION)
