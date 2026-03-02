@@ -94,3 +94,11 @@
   - Create: none
   - Reuse: Makefile:VERSION (grep+sed extraction pattern), Makefile:release (target to be replaced)
   - Risks: `sed -i` syntax differs between GNU and BSD/macOS — use `sed -i ''` guard or restrict to Linux; minor bump must reset patch to 0; `git fetch --tags` requires network access — the target should fail fast if fetch fails
+
+- [x] **Create docs directory with configuration reference and examples** [docs] M
+  - Acceptance: `docs/configuration.md` covers the full config file format (all fields, credential policy, Docker block, layer priority) extracted from README.md; `docs/examples.md` contains at least four complete, copy-paste-ready scenarios (project-layer only, project + user layers, Docker-enabled setup, multi-group setup) each with realistic YAML snippets and the exact `yconn` commands to use them; README.md is trimmed to a concise overview + installation + quick start that links to the new docs pages; all relative links between README.md and docs/ resolve correctly on GitHub
+  - Depends on: Automate version bump in make release target
+  - Modify: README.md
+  - Create: docs/configuration.md, docs/examples.md
+  - Reuse: config/connections.yaml (example YAML to draw from), docs/man/yconn.1.md (existing reference content to avoid duplicating)
+  - Risks: README must remain a useful standalone entry point on GitHub — do not over-strip it; avoid duplicating man page content verbatim; relative links (e.g. `[Configuration](docs/configuration.md)`) must use paths relative to the repo root to work on GitHub
