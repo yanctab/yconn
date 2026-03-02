@@ -79,6 +79,6 @@
   - Acceptance: `packaging/deb/control` has real maintainer, description, and a `Depends: openssh-client` runtime dependency; `scripts/build-deb.sh` installs the binary to `/usr/bin`, the man page to `/usr/share/man/man1/`, and example config to `/usr/share/doc/yconn/`; `make package` produces a `.deb` that installs cleanly and `yconn --help` works after install
   - Depends on: Implement mutating connection commands
 
-- [ ] **Finalize AUR PKGBUILD** [packaging] M
+- [x] **Finalize AUR PKGBUILD** [packaging] M
   - Acceptance: `packaging/aur/PKGBUILD.template` has correct `pkgdesc`, `depends=(openssh)`, installs binary and man page; `scripts/build-aur.sh` produces a valid `dist/PKGBUILD`; template verified with `makepkg --printsrcinfo` producing a valid `.SRCINFO`
   - Depends on: Finalize .deb packaging
