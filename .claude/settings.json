@@ -1,4 +1,19 @@
 {
+  "permissions": {
+    "allow": [
+      "Write",
+      "Bash(make *)",
+      "Bash(git *)",
+      "Bash(mkdir *)",
+      "Bash(touch *)",
+      "Bash(cp *)",
+      "Bash(cargo init *)",
+      "Bash(cargo add *)",
+      "Bash(rustup *)",
+      "Bash(chmod *)",
+      "Bash(sudo apt-get *)"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {
