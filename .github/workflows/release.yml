@@ -28,3 +28,7 @@ jobs:
             docs/man/${{ env.BINARY }}.1
             dist/*.deb
             dist/PKGBUILD
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish

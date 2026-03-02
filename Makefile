@@ -1,6 +1,6 @@
 # Makefile
 
-.PHONY: build lint fmt fmt-check test clean release package docs
+.PHONY: build lint fmt fmt-check test clean release package docs publish
 
 BINARY := $(shell grep '^name' Cargo.toml | head -1 | sed 's/.*= "//' | sed 's/"//')
 VERSION := $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*= "//' | sed 's/"//')
@@ -42,3 +42,6 @@ build-deb:
 
 build-aur:
 	@scripts/build-aur.sh $(BINARY) $(VERSION)
+
+publish: lint test
+	cargo publish

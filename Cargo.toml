@@ -2,6 +2,13 @@
 name = "yconn"
 version = "0.1.0"
 edition = "2021"
+description = "SSH connection manager for teams and DevOps environments"
+license = "MIT"
+repository = "https://github.com/yanctab/yconn"
+homepage = "https://github.com/yanctab/yconn"
+readme = "README.md"
+keywords = ["ssh", "connections", "devops", "cli", "manager"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 anyhow = "1.0.102"

@@ -82,3 +82,7 @@
 - [x] **Finalize AUR PKGBUILD** [packaging] M
   - Acceptance: `packaging/aur/PKGBUILD.template` has correct `pkgdesc`, `depends=(openssh)`, installs binary and man page; `scripts/build-aur.sh` produces a valid `dist/PKGBUILD`; template verified with `makepkg --printsrcinfo` producing a valid `.SRCINFO`
   - Depends on: Finalize .deb packaging
+
+- [x] **Publish to crates.io** [packaging] S
+  - Acceptance: `Cargo.toml` has required crates.io fields (`description`, `license`) plus discoverability fields (`repository`, `homepage`, `readme`, `keywords`, `categories`); `LICENSE` file present (MIT, 2026, yanctab); `make publish` target runs lint + test then `cargo publish`; `cargo publish --dry-run` exits 0; release CI (`release.yml`) runs `cargo publish` after GitHub Release step using `CARGO_REGISTRY_TOKEN` secret
+  - Depends on: Finalize AUR PKGBUILD
