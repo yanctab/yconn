@@ -1,1 +1,1 @@
-Replace per-file group system with inline `group` field on connections
+Support multiple project config filename conventions with `yconn init --location`

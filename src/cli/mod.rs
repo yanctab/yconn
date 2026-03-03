@@ -4,7 +4,7 @@
 // Parses commands and flags, delegates entirely to other modules.
 // No business logic lives here.
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 /// yconn — SSH connection manager
 #[derive(Debug, Parser)]
@@ -28,6 +28,21 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Commands,
+}
+
+/// Where `yconn init` places the scaffolded config file.
+///
+/// - `yconn` (default): `.yconn/connections.yaml` — recommended, git-trackable
+/// - `dotfile`:         `.connections.yaml` in the current directory
+/// - `plain`:           `connections.yaml` in the current directory (may clash with other tools)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum InitLocation {
+    /// Scaffold `.yconn/connections.yaml` (default, backward compatible)
+    Yconn,
+    /// Scaffold `.connections.yaml` in the current directory
+    Dotfile,
+    /// Scaffold `connections.yaml` in the current directory
+    Plain,
 }
 
 #[derive(Debug, Subcommand)]
@@ -62,8 +77,18 @@ pub enum Commands {
         name: String,
     },
 
-    /// Scaffold a <group>.yaml in .yconn/ in the current directory
-    Init,
+    /// Scaffold a connections.yaml in the current directory
+    Init {
+        /// Where to place the scaffolded config file.
+        ///
+        /// yconn  → .yconn/connections.yaml (default, git-trackable, recommended)
+        ///
+        /// dotfile → .connections.yaml in cwd
+        ///
+        /// plain   → connections.yaml in cwd (may clash with other tools)
+        #[arg(long, value_enum, default_value = "yconn")]
+        location: InitLocation,
+    },
 
     /// Show which config files are active, their paths, and Docker status
     Config,

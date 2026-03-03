@@ -61,7 +61,7 @@ fn main() -> Result<()> {
             let cfg = load_and_warn(&renderer, verbose)?;
             commands::remove::run(&cfg, &renderer, &name, cli.layer.as_deref())
         }
-        Commands::Init => commands::init::run(),
+        Commands::Init { location } => commands::init::run(location),
     }
 }
 
