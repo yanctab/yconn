@@ -33,18 +33,16 @@ connections:
 // ─── Public entry point ───────────────────────────────────────────────────────
 
 pub fn run() -> Result<()> {
-    let group = crate::group::active_group()
-        .context("cannot determine active group")?
-        .name;
     let cwd = std::env::current_dir().context("cannot determine current directory")?;
-    run_impl(&cwd, &group)
+    run_impl(&cwd)
 }
 
 // ─── Testable impl ────────────────────────────────────────────────────────────
 
-pub(crate) fn run_impl(cwd: &std::path::Path, group: &str) -> Result<()> {
+pub(crate) fn run_impl(cwd: &std::path::Path) -> Result<()> {
     let yconn_dir = cwd.join(".yconn");
-    let target = yconn_dir.join(format!("{group}.yaml"));
+    // Always scaffold connections.yaml — groups are inline fields, not per-file.
+    let target = yconn_dir.join("connections.yaml");
 
     if target.exists() {
         anyhow::bail!(
@@ -100,7 +98,7 @@ mod tests {
     #[test]
     fn test_init_creates_yconn_dir_and_file() {
         let dir = TempDir::new().unwrap();
-        run_impl(dir.path(), "connections").unwrap();
+        run_impl(dir.path()).unwrap();
 
         let target = dir.path().join(".yconn").join("connections.yaml");
         assert!(target.exists(), "config file should be created");
@@ -109,7 +107,7 @@ mod tests {
     #[test]
     fn test_init_file_contains_template_markers() {
         let dir = TempDir::new().unwrap();
-        run_impl(dir.path(), "connections").unwrap();
+        run_impl(dir.path()).unwrap();
 
         let content =
             fs::read_to_string(dir.path().join(".yconn").join("connections.yaml")).unwrap();
@@ -118,12 +116,13 @@ mod tests {
     }
 
     #[test]
-    fn test_init_uses_active_group_name() {
+    fn test_init_always_creates_connections_yaml() {
+        // init always scaffolds connections.yaml — groups are inline fields, not per-file.
         let dir = TempDir::new().unwrap();
-        run_impl(dir.path(), "work").unwrap();
+        run_impl(dir.path()).unwrap();
 
-        let target = dir.path().join(".yconn").join("work.yaml");
-        assert!(target.exists(), "file should use the active group name");
+        let target = dir.path().join(".yconn").join("connections.yaml");
+        assert!(target.exists(), "init must always create connections.yaml");
     }
 
     #[test]
@@ -133,7 +132,7 @@ mod tests {
         fs::create_dir_all(&yconn).unwrap();
         fs::write(yconn.join("connections.yaml"), "connections: {}\n").unwrap();
 
-        let err = run_impl(dir.path(), "connections").unwrap_err();
+        let err = run_impl(dir.path()).unwrap_err();
         assert!(err.to_string().contains("already exists"));
     }
 
@@ -143,7 +142,7 @@ mod tests {
         let yconn = dir.path().join(".yconn");
         assert!(!yconn.exists());
 
-        run_impl(dir.path(), "connections").unwrap();
+        run_impl(dir.path()).unwrap();
 
         assert!(yconn.exists());
     }
@@ -153,7 +152,7 @@ mod tests {
     fn test_init_file_has_0o600_permissions() {
         use std::os::unix::fs::PermissionsExt;
         let dir = TempDir::new().unwrap();
-        run_impl(dir.path(), "connections").unwrap();
+        run_impl(dir.path()).unwrap();
 
         let target = dir.path().join(".yconn").join("connections.yaml");
         let mode = fs::metadata(&target).unwrap().permissions().mode() & 0o777;

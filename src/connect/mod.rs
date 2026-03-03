@@ -114,6 +114,7 @@ mod tests {
             key: key.map(str::to_string),
             description: String::new(),
             link: None,
+            group: None,
             layer: Layer::User,
             source_path: PathBuf::from("test.yaml"),
             shadowed: false,
