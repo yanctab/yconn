@@ -421,19 +421,39 @@ fn load_layer(
 
 // ─── Upward walk ─────────────────────────────────────────────────────────────
 
-/// Walk upward from `cwd` looking for `.yconn/connections.yaml`, stopping at
+/// Walk upward from `cwd` looking for a project config file, stopping at
 /// `$HOME` or the filesystem root.
 ///
-/// Returns `(yconn_dir, config_file)` when found, `(None, None)` otherwise.
+/// Checks three filename conventions per directory in priority order:
+/// 1. `.yconn/connections.yaml`
+/// 2. `.connections.yaml`
+/// 3. `connections.yaml`
+///
+/// Returns `(yconn_dir, config_file)` where `yconn_dir` is the `.yconn/`
+/// directory (used for group discovery), or `None` for the dotfile/plain
+/// conventions where no `.yconn/` dir exists.
 fn upward_walk(cwd: &Path) -> (Option<PathBuf>, Option<PathBuf>) {
     let home = dirs::home_dir();
     let mut dir = cwd.to_path_buf();
 
     loop {
+        // Priority 1: .yconn/connections.yaml
         let yconn_dir = dir.join(".yconn");
-        let config_file = yconn_dir.join("connections.yaml");
-        if config_file.exists() {
-            return (Some(yconn_dir), Some(config_file));
+        let yconn_file = yconn_dir.join("connections.yaml");
+        if yconn_file.exists() {
+            return (Some(yconn_dir), Some(yconn_file));
+        }
+
+        // Priority 2: .connections.yaml
+        let dotfile = dir.join(".connections.yaml");
+        if dotfile.exists() {
+            return (None, Some(dotfile));
+        }
+
+        // Priority 3: connections.yaml
+        let plain = dir.join("connections.yaml");
+        if plain.exists() {
+            return (None, Some(plain));
         }
 
         // Stop at $HOME (don't walk into personal dirs above the project).
@@ -589,6 +609,82 @@ mod tests {
         let (d, f) = upward_walk(dir.path());
         assert!(d.is_none());
         assert!(f.is_none());
+    }
+
+    #[test]
+    fn test_upward_walk_finds_dotfile_convention() {
+        let root = TempDir::new().unwrap();
+        let dotfile = root.path().join(".connections.yaml");
+        fs::write(&dotfile, simple_conn("srv", "1.2.3.4")).unwrap();
+
+        let nested = root.path().join("sub");
+        fs::create_dir_all(&nested).unwrap();
+
+        let (dir, file) = upward_walk(&nested);
+        assert!(dir.is_none(), "no .yconn dir for dotfile convention");
+        assert_eq!(file.unwrap(), dotfile);
+    }
+
+    #[test]
+    fn test_upward_walk_finds_plain_convention() {
+        let root = TempDir::new().unwrap();
+        let plain = root.path().join("connections.yaml");
+        fs::write(&plain, simple_conn("srv", "1.2.3.4")).unwrap();
+
+        let nested = root.path().join("sub");
+        fs::create_dir_all(&nested).unwrap();
+
+        let (dir, file) = upward_walk(&nested);
+        assert!(dir.is_none(), "no .yconn dir for plain convention");
+        assert_eq!(file.unwrap(), plain);
+    }
+
+    #[test]
+    fn test_upward_walk_yconn_beats_dotfile_same_dir() {
+        let root = TempDir::new().unwrap();
+        // Both present — .yconn/connections.yaml must win.
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            &simple_conn("yconn-srv", "1.1.1.1"),
+        );
+        fs::write(
+            root.path().join(".connections.yaml"),
+            simple_conn("dotfile-srv", "2.2.2.2"),
+        )
+        .unwrap();
+
+        let (_, file) = upward_walk(root.path());
+        let content = fs::read_to_string(file.unwrap()).unwrap();
+        assert!(
+            content.contains("yconn-srv"),
+            ".yconn convention must beat dotfile"
+        );
+    }
+
+    #[test]
+    fn test_upward_walk_dotfile_beats_plain_same_dir() {
+        let root = TempDir::new().unwrap();
+        // .connections.yaml beats connections.yaml.
+        fs::write(
+            root.path().join(".connections.yaml"),
+            simple_conn("dotfile-srv", "2.2.2.2"),
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("connections.yaml"),
+            simple_conn("plain-srv", "3.3.3.3"),
+        )
+        .unwrap();
+
+        let (_, file) = upward_walk(root.path());
+        let content = fs::read_to_string(file.unwrap()).unwrap();
+        assert!(
+            content.contains("dotfile-srv"),
+            "dotfile convention must beat plain"
+        );
     }
 
     #[test]
