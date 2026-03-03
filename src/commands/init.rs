@@ -59,6 +59,8 @@ pub(crate) fn run_impl(cwd: &std::path::Path, group: &str) -> Result<()> {
     std::fs::write(&target, TEMPLATE)
         .with_context(|| format!("failed to write {}", target.display()))?;
 
+    set_private_permissions(&target)?;
+
     println!("Created {}", canonicalize_display(&target).display());
     println!("Edit it to add connections, then run `yconn list` to verify.");
 
@@ -69,6 +71,22 @@ pub(crate) fn run_impl(cwd: &std::path::Path, group: &str) -> Result<()> {
 /// `canonicalize` fails (e.g. on a tempdir that has been removed).
 fn canonicalize_display(path: &std::path::Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// Set 0o600 permissions on `path` so it is not world-readable.
+///
+/// No-op on non-Unix platforms.
+#[cfg(unix)]
+fn set_private_permissions(path: &std::path::Path) -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let perms = std::fs::Permissions::from_mode(0o600);
+    std::fs::set_permissions(path, perms)
+        .with_context(|| format!("failed to set permissions on {}", path.display()))
+}
+
+#[cfg(not(unix))]
+fn set_private_permissions(_path: &std::path::Path) -> anyhow::Result<()> {
+    Ok(())
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -128,5 +146,17 @@ mod tests {
         run_impl(dir.path(), "connections").unwrap();
 
         assert!(yconn.exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_init_file_has_0o600_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new().unwrap();
+        run_impl(dir.path(), "connections").unwrap();
+
+        let target = dir.path().join(".yconn").join("connections.yaml");
+        let mode = fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "init file should have 0o600 permissions");
     }
 }
