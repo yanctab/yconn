@@ -154,6 +154,120 @@ mod tests {
         assert_eq!(args, vec!["ssh", "-p", "2222", "deploy@myhost"]);
     }
 
+    // ── verbose SSH command format (same multiline format as verbose_docker_cmd) ─
+
+    /// Format args the same way `Renderer::verbose_ssh_cmd` does, so the
+    /// expected verbose output can be asserted without reaching into the
+    /// display module from connect tests.
+    fn format_verbose(args: &[String]) -> String {
+        match args.split_first() {
+            None => String::new(),
+            Some((first, rest)) => {
+                let mut line = format!("[yconn] Running: {}", first);
+                for arg in rest {
+                    line.push_str(&format!(" \\\n         {}", arg));
+                }
+                line
+            }
+        }
+    }
+
+    #[test]
+    fn test_verbose_key_auth_default_port() {
+        let conn = make_conn("key", Some("~/.ssh/id_rsa"), 22, "myhost", "deploy");
+        let args = build_args(&conn);
+        let out = format_verbose(&args);
+        assert!(
+            out.starts_with("[yconn] Running: ssh"),
+            "must start with prefix: {out}"
+        );
+        assert!(out.contains("-i"), "must include -i flag: {out}");
+        assert!(
+            out.contains("~/.ssh/id_rsa"),
+            "must include key path: {out}"
+        );
+        assert!(
+            out.contains("deploy@myhost"),
+            "must include destination: {out}"
+        );
+        assert!(
+            !out.contains("-p"),
+            "must not include port flag for default port: {out}"
+        );
+    }
+
+    #[test]
+    fn test_verbose_key_auth_custom_port() {
+        let conn = make_conn("key", Some("~/.ssh/id_rsa"), 2222, "myhost", "deploy");
+        let args = build_args(&conn);
+        let out = format_verbose(&args);
+        assert!(
+            out.starts_with("[yconn] Running: ssh"),
+            "must start with prefix: {out}"
+        );
+        assert!(out.contains("-i"), "must include -i flag: {out}");
+        assert!(
+            out.contains("~/.ssh/id_rsa"),
+            "must include key path: {out}"
+        );
+        assert!(
+            out.contains("-p"),
+            "must include -p flag for custom port: {out}"
+        );
+        assert!(out.contains("2222"), "must include port number: {out}");
+        assert!(
+            out.contains("deploy@myhost"),
+            "must include destination: {out}"
+        );
+    }
+
+    #[test]
+    fn test_verbose_password_auth_default_port() {
+        let conn = make_conn("password", None, 22, "myhost", "deploy");
+        let args = build_args(&conn);
+        let out = format_verbose(&args);
+        assert!(
+            out.starts_with("[yconn] Running: ssh"),
+            "must start with prefix: {out}"
+        );
+        assert!(
+            !out.contains("-i"),
+            "must not include -i flag for password auth: {out}"
+        );
+        assert!(
+            !out.contains("-p"),
+            "must not include port flag for default port: {out}"
+        );
+        assert!(
+            out.contains("deploy@myhost"),
+            "must include destination: {out}"
+        );
+    }
+
+    #[test]
+    fn test_verbose_password_auth_custom_port() {
+        let conn = make_conn("password", None, 2222, "myhost", "deploy");
+        let args = build_args(&conn);
+        let out = format_verbose(&args);
+        assert!(
+            out.starts_with("[yconn] Running: ssh"),
+            "must start with prefix: {out}"
+        );
+        assert!(
+            !out.contains("-i"),
+            "must not include -i flag for password auth: {out}"
+        );
+        assert!(
+            out.contains("-p"),
+            "must include -p flag for custom port: {out}"
+        );
+        assert!(out.contains("2222"), "must include port number: {out}");
+        assert!(
+            out.contains("deploy@myhost"),
+            "must include destination: {out}"
+        );
+    }
+
     // ── additional edge cases ─────────────────────────────────────────────────
 
     #[test]

@@ -443,6 +443,17 @@ impl Renderer {
         }
     }
 
+    /// Print the full `ssh` command to stderr (for `--verbose`).
+    pub fn verbose_ssh_cmd(&self, args: &[String]) {
+        if let Some((first, rest)) = args.split_first() {
+            let mut line = format!("[yconn] Running: {}", first);
+            for arg in rest {
+                line.push_str(&format!(" \\\n         {}", arg));
+            }
+            eprintln!("{line}");
+        }
+    }
+
     /// Print a non-blocking warning to stderr.
     pub fn warn(&self, msg: &str) {
         eprintln!("warning: {msg}");
@@ -830,5 +841,24 @@ mod tests {
     #[test]
     fn test_verbose_docker_cmd_empty() {
         Renderer::new(false).verbose_docker_cmd(&[]);
+    }
+
+    // ── verbose_ssh_cmd tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_verbose_ssh_cmd_formats_args() {
+        // Just test that the function doesn't panic; output goes to stderr.
+        let renderer = Renderer::new(false);
+        renderer.verbose_ssh_cmd(&[
+            "ssh".into(),
+            "-i".into(),
+            "~/.ssh/id_rsa".into(),
+            "deploy@myhost".into(),
+        ]);
+    }
+
+    #[test]
+    fn test_verbose_ssh_cmd_empty() {
+        Renderer::new(false).verbose_ssh_cmd(&[]);
     }
 }

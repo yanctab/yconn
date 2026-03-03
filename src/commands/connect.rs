@@ -38,6 +38,10 @@ pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str, verbose: bool) -
     }
 
     // Direct SSH path: replace the current process with ssh.
+    if verbose {
+        let ssh_args = connect::build_args(conn);
+        renderer.verbose_ssh_cmd(&ssh_args);
+    }
     connect::exec(conn)
 }
 
