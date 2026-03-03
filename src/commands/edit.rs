@@ -7,11 +7,12 @@ use std::process::Command;
 
 use anyhow::{anyhow, bail, Context, Result};
 
+use crate::cli::LayerArg;
 use crate::config::{Layer, LoadedConfig};
 
 // ─── Public entry point ───────────────────────────────────────────────────────
 
-pub fn run(cfg: &LoadedConfig, name: &str, layer: Option<&str>) -> Result<()> {
+pub fn run(cfg: &LoadedConfig, name: &str, layer: Option<LayerArg>) -> Result<()> {
     let path = resolve_path(cfg, name, layer)?;
     open_editor(&path)
 }
@@ -22,9 +23,13 @@ pub fn run(cfg: &LoadedConfig, name: &str, layer: Option<&str>) -> Result<()> {
 ///
 /// If `--layer` is given, look for the connection in that layer only.
 /// Otherwise use the source path from the active (highest-priority) connection.
-fn resolve_path(cfg: &LoadedConfig, name: &str, layer: Option<&str>) -> Result<std::path::PathBuf> {
-    if let Some(layer_str) = layer {
-        let target_layer = parse_layer(layer_str)?;
+fn resolve_path(
+    cfg: &LoadedConfig,
+    name: &str,
+    layer: Option<LayerArg>,
+) -> Result<std::path::PathBuf> {
+    if let Some(layer_arg) = layer {
+        let target_layer = layer_arg_to_layer(layer_arg);
         // Search all_connections for the named entry in the specified layer.
         let conn = cfg
             .all_connections
@@ -45,12 +50,11 @@ fn resolve_path(cfg: &LoadedConfig, name: &str, layer: Option<&str>) -> Result<s
     }
 }
 
-fn parse_layer(s: &str) -> Result<Layer> {
-    match s {
-        "project" => Ok(Layer::Project),
-        "user" => Ok(Layer::User),
-        "system" => Ok(Layer::System),
-        other => bail!("unknown layer '{other}'; use system, user, or project"),
+fn layer_arg_to_layer(arg: LayerArg) -> Layer {
+    match arg {
+        LayerArg::Project => Layer::Project,
+        LayerArg::User => Layer::User,
+        LayerArg::System => Layer::System,
     }
 }
 
@@ -145,7 +149,7 @@ mod tests {
         assert!(p.starts_with(&yconn));
 
         // With --layer system we get the system path.
-        let p2 = resolve_path(&cfg, "srv", Some("system")).unwrap();
+        let p2 = resolve_path(&cfg, "srv", Some(LayerArg::System)).unwrap();
         assert!(p2.starts_with(sys.path()));
     }
 
@@ -173,18 +177,23 @@ mod tests {
         let cfg = load(cwd.path(), Some(user.path()), empty.path());
 
         // 'srv' exists in user layer but not project layer.
-        let err = resolve_path(&cfg, "srv", Some("project")).unwrap_err();
+        let err = resolve_path(&cfg, "srv", Some(LayerArg::Project)).unwrap_err();
         assert!(err.to_string().contains("srv"));
         assert!(err.to_string().contains("project"));
     }
 
-    #[test]
-    fn test_resolve_path_unknown_layer_returns_error() {
-        let cwd = TempDir::new().unwrap();
-        let empty = TempDir::new().unwrap();
-        let cfg = load(cwd.path(), None, empty.path());
+    // ── layer_arg_to_layer ────────────────────────────────────────────────────
 
-        let err = resolve_path(&cfg, "srv", Some("bogus")).unwrap_err();
-        assert!(err.to_string().contains("bogus"));
+    #[test]
+    fn test_layer_arg_to_layer_all_variants() {
+        assert!(matches!(
+            layer_arg_to_layer(LayerArg::System),
+            Layer::System
+        ));
+        assert!(matches!(layer_arg_to_layer(LayerArg::User), Layer::User));
+        assert!(matches!(
+            layer_arg_to_layer(LayerArg::Project),
+            Layer::Project
+        ));
     }
 }

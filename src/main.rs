@@ -52,14 +52,14 @@ fn main() -> Result<()> {
             let cfg = load_and_warn(&renderer, verbose)?;
             commands::connect::run(&cfg, &renderer, &name, verbose)
         }
-        Commands::Add => commands::add::run(cli.layer.as_deref()),
+        Commands::Add => commands::add::run(cli.layer),
         Commands::Edit { name } => {
             let cfg = load_and_warn(&renderer, verbose)?;
-            commands::edit::run(&cfg, &name, cli.layer.as_deref())
+            commands::edit::run(&cfg, &name, cli.layer)
         }
         Commands::Remove { name } => {
             let cfg = load_and_warn(&renderer, verbose)?;
-            commands::remove::run(&cfg, &renderer, &name, cli.layer.as_deref())
+            commands::remove::run(&cfg, &renderer, &name, cli.layer)
         }
         Commands::Init { location } => commands::init::run(location),
     }

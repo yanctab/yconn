@@ -6,13 +6,28 @@
 
 use clap::{Parser, Subcommand, ValueEnum};
 
+/// Which config layer to target for add / edit / remove.
+///
+/// - `system`  → `/etc/yconn/connections.yaml`
+/// - `user`    → `~/.config/yconn/connections.yaml` (default when omitted)
+/// - `project` → `.yconn/connections.yaml` in the current directory tree
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum LayerArg {
+    /// System-wide layer: `/etc/yconn/connections.yaml`
+    System,
+    /// Per-user layer: `~/.config/yconn/connections.yaml` (default)
+    User,
+    /// Project layer: `.yconn/connections.yaml` in the current directory tree
+    Project,
+}
+
 /// yconn — SSH connection manager
 #[derive(Debug, Parser)]
 #[command(name = "yconn", version, about)]
 pub struct Cli {
     /// Target a specific config layer for add / edit / remove
     #[arg(long, global = true, value_name = "LAYER")]
-    pub layer: Option<String>,
+    pub layer: Option<LayerArg>,
 
     /// Include shadowed entries in list output
     #[arg(long, global = true)]
