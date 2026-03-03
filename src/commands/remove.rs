@@ -7,12 +7,18 @@ use std::path::Path;
 
 use anyhow::{anyhow, bail, Context, Result};
 
+use crate::cli::LayerArg;
 use crate::config::{Layer, LoadedConfig};
 use crate::display::Renderer;
 
 // ─── Public entry point ───────────────────────────────────────────────────────
 
-pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str, layer: Option<&str>) -> Result<()> {
+pub fn run(
+    cfg: &LoadedConfig,
+    renderer: &Renderer,
+    name: &str,
+    layer: Option<LayerArg>,
+) -> Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
     run_impl(
@@ -31,7 +37,7 @@ pub(crate) fn run_impl(
     cfg: &LoadedConfig,
     _renderer: &Renderer,
     name: &str,
-    layer: Option<&str>,
+    layer: Option<LayerArg>,
     input: &mut dyn BufRead,
     output: &mut dyn Write,
 ) -> Result<()> {
@@ -47,8 +53,8 @@ pub(crate) fn run_impl(
     }
 
     // If --layer is given, restrict to that layer only.
-    let target = if let Some(layer_str) = layer {
-        let target_layer = parse_layer(layer_str)?;
+    let target = if let Some(layer_arg) = layer {
+        let target_layer = layer_arg_to_layer(layer_arg);
         all.iter()
             .find(|c| c.layer == target_layer)
             .copied()
@@ -76,14 +82,13 @@ pub(crate) fn run_impl(
     Ok(())
 }
 
-// ─── Layer parsing ────────────────────────────────────────────────────────────
+// ─── Layer conversion ─────────────────────────────────────────────────────────
 
-fn parse_layer(s: &str) -> Result<Layer> {
-    match s {
-        "project" => Ok(Layer::Project),
-        "user" => Ok(Layer::User),
-        "system" => Ok(Layer::System),
-        other => bail!("unknown layer '{other}'; use system, user, or project"),
+fn layer_arg_to_layer(arg: LayerArg) -> Layer {
+    match arg {
+        LayerArg::Project => Layer::Project,
+        LayerArg::User => Layer::User,
+        LayerArg::System => Layer::System,
     }
 }
 
@@ -230,7 +235,7 @@ mod tests {
     fn run_with_input(
         cfg: &config::LoadedConfig,
         name: &str,
-        layer: Option<&str>,
+        layer: Option<LayerArg>,
         answers: &[&str],
     ) -> Result<String> {
         let input_str = answers.join("\n") + "\n";
@@ -322,7 +327,7 @@ mod tests {
         let cfg = load(root.path(), None, sys.path());
 
         // Remove from system layer only.
-        run_with_input(&cfg, "srv", Some("system"), &[]).unwrap();
+        run_with_input(&cfg, "srv", Some(LayerArg::System), &[]).unwrap();
 
         // Project file unchanged.
         let proj_content = fs::read_to_string(yconn.join("connections.yaml")).unwrap();
@@ -333,20 +338,19 @@ mod tests {
         assert!(!sys_content.contains("  srv:"));
     }
 
-    #[test]
-    fn test_remove_unknown_layer_returns_error() {
-        let cwd = TempDir::new().unwrap();
-        let user = TempDir::new().unwrap();
-        write_yaml(
-            user.path(),
-            "connections.yaml",
-            "connections:\n  srv:\n    host: h\n    user: u\n    auth: key\n    description: d\n",
-        );
-        let empty = TempDir::new().unwrap();
-        let cfg = load(cwd.path(), Some(user.path()), empty.path());
+    // ── layer_arg_to_layer ────────────────────────────────────────────────────
 
-        let err = run_with_input(&cfg, "srv", Some("bogus"), &[]).unwrap_err();
-        assert!(err.to_string().contains("bogus"));
+    #[test]
+    fn test_layer_arg_to_layer_all_variants() {
+        assert!(matches!(
+            layer_arg_to_layer(LayerArg::System),
+            Layer::System
+        ));
+        assert!(matches!(layer_arg_to_layer(LayerArg::User), Layer::User));
+        assert!(matches!(
+            layer_arg_to_layer(LayerArg::Project),
+            Layer::Project
+        ));
     }
 
     // ── ambiguous prompt ──────────────────────────────────────────────────────

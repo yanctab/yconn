@@ -7,12 +7,13 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
+use crate::cli::LayerArg;
 use crate::config::Layer;
 
 // ─── Public entry point ───────────────────────────────────────────────────────
 
-pub fn run(layer: Option<&str>) -> Result<()> {
-    let target_layer = resolve_layer(layer)?;
+pub fn run(layer: Option<LayerArg>) -> Result<()> {
+    let target_layer = layer_arg_to_layer(layer);
     let target_path = layer_path(target_layer)?;
 
     let stdin = io::stdin();
@@ -27,12 +28,14 @@ pub fn run(layer: Option<&str>) -> Result<()> {
 
 // ─── Layer resolution ─────────────────────────────────────────────────────────
 
-fn resolve_layer(layer: Option<&str>) -> Result<Layer> {
+/// Convert the CLI `--layer` argument to the internal [`Layer`] type.
+///
+/// When `--layer` is omitted, the default is [`Layer::User`].
+fn layer_arg_to_layer(layer: Option<LayerArg>) -> Layer {
     match layer {
-        Some("system") => Ok(Layer::System),
-        Some("user") | None => Ok(Layer::User),
-        Some("project") => Ok(Layer::Project),
-        Some(other) => bail!("unknown layer '{other}'; use system, user, or project"),
+        Some(LayerArg::System) => Layer::System,
+        Some(LayerArg::Project) => Layer::Project,
+        Some(LayerArg::User) | None => Layer::User,
     }
 }
 
@@ -297,35 +300,32 @@ mod tests {
     // ── layer resolution ──────────────────────────────────────────────────────
 
     #[test]
-    fn test_resolve_layer_none_defaults_to_user() {
-        assert!(matches!(resolve_layer(None).unwrap(), Layer::User));
+    fn test_layer_arg_none_defaults_to_user() {
+        assert!(matches!(layer_arg_to_layer(None), Layer::User));
     }
 
     #[test]
-    fn test_resolve_layer_user() {
-        assert!(matches!(resolve_layer(Some("user")).unwrap(), Layer::User));
-    }
-
-    #[test]
-    fn test_resolve_layer_project() {
+    fn test_layer_arg_user() {
         assert!(matches!(
-            resolve_layer(Some("project")).unwrap(),
+            layer_arg_to_layer(Some(LayerArg::User)),
+            Layer::User
+        ));
+    }
+
+    #[test]
+    fn test_layer_arg_project() {
+        assert!(matches!(
+            layer_arg_to_layer(Some(LayerArg::Project)),
             Layer::Project
         ));
     }
 
     #[test]
-    fn test_resolve_layer_system() {
+    fn test_layer_arg_system() {
         assert!(matches!(
-            resolve_layer(Some("system")).unwrap(),
+            layer_arg_to_layer(Some(LayerArg::System)),
             Layer::System
         ));
-    }
-
-    #[test]
-    fn test_resolve_layer_unknown_returns_error() {
-        let err = resolve_layer(Some("bogus")).unwrap_err();
-        assert!(err.to_string().contains("bogus"));
     }
 
     // ── add creates new file ──────────────────────────────────────────────────
