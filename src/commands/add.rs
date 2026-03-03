@@ -224,6 +224,24 @@ fn write_entry(target: &Path, name: &str, entry: &str) -> Result<()> {
             .with_context(|| format!("failed to write {}", target.display()))?;
     }
 
+    set_private_permissions(target)?;
+
+    Ok(())
+}
+
+/// Set 0o600 permissions on `path` so it is not world-readable.
+///
+/// This is a no-op on non-Unix platforms where the concept does not apply.
+#[cfg(unix)]
+fn set_private_permissions(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let perms = std::fs::Permissions::from_mode(0o600);
+    std::fs::set_permissions(path, perms)
+        .with_context(|| format!("failed to set permissions on {}", path.display()))
+}
+
+#[cfg(not(unix))]
+fn set_private_permissions(_path: &Path) -> Result<()> {
     Ok(())
 }
 
@@ -498,5 +516,52 @@ mod tests {
     fn test_entry_exists_returns_false_when_absent() {
         let content = "connections:\n  other:\n    host: h\n";
         assert!(!entry_exists(content, "myconn"));
+    }
+
+    // ── file permissions ──────────────────────────────────────────────────────
+
+    #[test]
+    #[cfg(unix)]
+    fn test_add_new_file_has_0o600_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new().unwrap();
+        let answers = [
+            "srv", "1.2.3.4", "root", "", "key", "~/.ssh/k", "Server", "",
+        ];
+        run_with_input(Layer::User, dir.path(), &answers).unwrap();
+        let target = dir.path().join("connections.yaml");
+        let mode = fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "new config file should have 0o600 permissions");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_add_existing_file_has_0o600_permissions_after_append() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new().unwrap();
+        let target = dir.path().join("connections.yaml");
+        // Write initial content with looser permissions to simulate existing file.
+        fs::write(
+            &target,
+            "version: 1\n\nconnections:\n  existing:\n    host: h\n    user: u\n    auth: key\n    description: \"d\"\n",
+        )
+        .unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();
+
+        let answers = [
+            "newconn",
+            "2.2.2.2",
+            "user2",
+            "",
+            "password",
+            "New server",
+            "",
+        ];
+        run_with_input(Layer::User, dir.path(), &answers).unwrap();
+        let mode = fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "updated config file should have 0o600 permissions"
+        );
     }
 }

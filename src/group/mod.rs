@@ -96,6 +96,24 @@ pub(crate) fn write_session_at(path: &Path, group: Option<&str>) -> Result<()> {
 
     std::fs::write(path, content).with_context(|| format!("failed to write {}", path.display()))?;
 
+    set_private_permissions(path)?;
+
+    Ok(())
+}
+
+/// Set 0o600 permissions on `path` so it is not world-readable.
+///
+/// No-op on non-Unix platforms.
+#[cfg(unix)]
+fn set_private_permissions(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let perms = std::fs::Permissions::from_mode(0o600);
+    std::fs::set_permissions(path, perms)
+        .with_context(|| format!("failed to set permissions on {}", path.display()))
+}
+
+#[cfg(not(unix))]
+fn set_private_permissions(_path: &Path) -> Result<()> {
     Ok(())
 }
 
@@ -262,6 +280,32 @@ mod tests {
         write_session_at(&path, Some("private")).unwrap();
         let ag = read_session_at(&path).unwrap();
         assert_eq!(ag.name, "private");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_write_session_file_has_0o600_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("session.yml");
+        write_session_at(&path, Some("work")).unwrap();
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "session.yml should have 0o600 permissions");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_write_session_clear_file_has_0o600_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("session.yml");
+        write_session_at(&path, Some("work")).unwrap();
+        write_session_at(&path, None).unwrap();
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "session.yml should have 0o600 permissions after clear"
+        );
     }
 
     // ── group discovery ───────────────────────────────────────────────────────
