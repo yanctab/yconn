@@ -1,10 +1,10 @@
 // Handlers for `yconn group` subcommands:
-//   list    — show all groups found across all layers
-//   use     — set the active group (persisted to ~/.config/yconn/session.yml)
-//   clear   — remove active_group from session.yml, revert to default
+//   list    — show all groups found across all connections
+//   use     — set the active group lock (persisted to ~/.config/yconn/session.yml)
+//   clear   — remove active_group from session.yml, revert to no lock
 //   current — print the active group name and its resolved config file paths
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 
@@ -12,21 +12,7 @@ use crate::config::LoadedConfig;
 use crate::display::{GroupCurrentStatus, GroupRow, LayerCurrentInfo, Renderer};
 
 pub fn list(cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
-    let user_dir = dirs::config_dir().map(|d| d.join("yconn"));
-    let system_dir = PathBuf::from("/etc/yconn");
-
-    // Build the list of (dir, label) pairs in priority order.
-    let mut dirs: Vec<(PathBuf, &str)> = Vec::new();
-    if let Some(ref pd) = cfg.project_dir {
-        dirs.push((pd.clone(), "project"));
-    }
-    if let Some(ref ud) = user_dir {
-        dirs.push((ud.clone(), "user"));
-    }
-    dirs.push((system_dir, "system"));
-
-    let dir_refs: Vec<(&Path, &str)> = dirs.iter().map(|(p, l)| (p.as_path(), *l)).collect();
-    let groups = crate::group::discover_groups(&dir_refs)?;
+    let groups = cfg.discover_groups();
 
     let rows: Vec<GroupRow> = groups
         .iter()
@@ -65,33 +51,21 @@ pub fn current(cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
     Ok(())
 }
 
-/// Set the active group and warn if no config file for it exists in any layer.
+/// Set the active group lock and warn if no connections with that group value
+/// exist in any layer.
 ///
-/// The group is always written even if no config file exists — the user can
-/// follow up with `yconn init` to create one.
+/// The group is always written even if no connections use it — the user can
+/// follow up with `yconn add` to tag connections with this group.
 pub fn use_group(name: &str, cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
     let session_path = dirs::config_dir()
         .context("cannot determine user config directory")?
         .join("yconn")
         .join("session.yml");
 
-    let user_dir = dirs::config_dir().map(|d| d.join("yconn"));
-    let system_dir = PathBuf::from("/etc/yconn");
-
-    let mut dirs: Vec<(PathBuf, &str)> = Vec::new();
-    if let Some(ref pd) = cfg.project_dir {
-        dirs.push((pd.clone(), "project"));
-    }
-    if let Some(ref ud) = user_dir {
-        dirs.push((ud.clone(), "user"));
-    }
-    dirs.push((system_dir, "system"));
-
-    let dir_refs: Vec<(&Path, &str)> = dirs.iter().map(|(p, l)| (p.as_path(), *l)).collect();
-    use_group_impl(name, &session_path, &dir_refs, renderer)
+    use_group_impl(name, &session_path, cfg, renderer)
 }
 
-/// Remove `active_group` from `session.yml`, reverting to the default group.
+/// Remove `active_group` from `session.yml`, reverting to no group lock.
 pub fn clear() -> Result<()> {
     let session_path = dirs::config_dir()
         .context("cannot determine user config directory")?
@@ -105,15 +79,17 @@ pub fn clear() -> Result<()> {
 fn use_group_impl(
     name: &str,
     session_path: &Path,
-    layer_dirs: &[(&Path, &str)],
+    cfg: &LoadedConfig,
     renderer: &Renderer,
 ) -> Result<()> {
     crate::group::write_session_at(session_path, Some(name))?;
 
-    let groups = crate::group::discover_groups(layer_dirs)?;
+    // Warn if no connections in any layer carry this group tag.
+    let groups = cfg.discover_groups();
     if !groups.iter().any(|g| g.name == name) {
         renderer.warn(&format!(
-            "group '{name}' has no config file in any layer — create one with 'yconn init'"
+            "group '{name}' has no connections tagged with it in any layer — \
+             tag connections with 'group: {name}' or use 'yconn add'"
         ));
     }
 
@@ -149,62 +125,74 @@ mod tests {
         user: Option<&std::path::Path>,
         sys: &std::path::Path,
     ) -> config::LoadedConfig {
-        config::load_impl(cwd, "connections", false, user, sys).unwrap()
+        config::load_impl(cwd, None, false, user, sys).unwrap()
+    }
+
+    fn simple_conn(name: &str, host: &str) -> String {
+        format!(
+            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth: key\n    description: desc\n"
+        )
+    }
+
+    fn conn_with_group(name: &str, host: &str, group: &str) -> String {
+        format!(
+            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth: key\n    description: desc\n    group: {group}\n"
+        )
     }
 
     // ── group list ────────────────────────────────────────────────────────────
 
     #[test]
-    fn test_group_list_no_error() {
-        let root = TempDir::new().unwrap();
-        let yconn = root.path().join(".yconn");
-        fs::create_dir_all(&yconn).unwrap();
-        write_yaml(&yconn, "connections.yaml", "connections: {}\n");
-
-        let empty = TempDir::new().unwrap();
-        let cfg = load(root.path(), None, empty.path());
-        // project_dir is set when .yconn/connections.yaml exists
-        assert!(cfg.project_dir.is_some());
-        list(&cfg, &no_color()).unwrap();
-    }
-
-    #[test]
-    fn test_group_list_no_project_dir_no_error() {
+    fn test_group_list_no_error_empty() {
         let cwd = TempDir::new().unwrap();
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), None, empty.path());
-        assert!(cfg.project_dir.is_none());
         list(&cfg, &no_color()).unwrap();
     }
 
     #[test]
-    fn test_group_list_groups_discovered_from_project() {
-        let root = TempDir::new().unwrap();
-        let yconn = root.path().join(".yconn");
-        fs::create_dir_all(&yconn).unwrap();
-        write_yaml(&yconn, "connections.yaml", "connections: {}\n");
-        write_yaml(&yconn, "work.yaml", "connections: {}\n");
-
+    fn test_group_list_shows_groups_from_connections() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            &conn_with_group("work-srv", "10.0.0.1", "work"),
+        );
         let empty = TempDir::new().unwrap();
-        let cfg = load(root.path(), None, empty.path());
-        // Discover manually to verify the expected groups exist.
-        let dirs = [(yconn.as_path(), "project")];
-        let groups = crate::group::discover_groups(&dirs).unwrap();
-        let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
-        assert!(names.contains(&"connections"));
-        assert!(names.contains(&"work"));
+        let cfg = load(cwd.path(), Some(user.path()), empty.path());
+        // Should find "work" group from inline field
+        let groups = cfg.discover_groups();
+        assert!(!groups.is_empty());
+        assert!(groups.iter().any(|g| g.name == "work"));
+        list(&cfg, &no_color()).unwrap();
+    }
 
+    #[test]
+    fn test_group_list_connections_without_group_field_not_shown() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            &simple_conn("plain-srv", "10.0.0.1"),
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(cwd.path(), Some(user.path()), empty.path());
+        // Connections without a group field don't appear in group list
+        let groups = cfg.discover_groups();
+        assert!(groups.is_empty());
         list(&cfg, &no_color()).unwrap();
     }
 
     // ── group current ─────────────────────────────────────────────────────────
 
     #[test]
-    fn test_group_current_default_group_no_error() {
+    fn test_group_current_no_lock_no_error() {
         let cwd = TempDir::new().unwrap();
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), None, empty.path());
-        assert_eq!(cfg.group, "connections");
+        assert!(cfg.group.is_none());
         current(&cfg, &no_color()).unwrap();
     }
 
@@ -214,14 +202,20 @@ mod tests {
         let user = TempDir::new().unwrap();
         write_yaml(
             user.path(),
-            "work.yaml",
-            "connections:\n  srv:\n    host: h\n    user: u\n    auth: key\n    description: d\n",
+            "connections.yaml",
+            &conn_with_group("work-srv", "10.0.0.1", "work"),
         );
         let empty = TempDir::new().unwrap();
-        // Explicitly request the "work" group (as if session.yml said so)
-        let cfg =
-            config::load_impl(cwd.path(), "work", true, Some(user.path()), empty.path()).unwrap();
-        assert_eq!(cfg.group, "work");
+        // Explicitly request the "work" group lock (as if session.yml said so)
+        let cfg = config::load_impl(
+            cwd.path(),
+            Some("work"),
+            true,
+            Some(user.path()),
+            empty.path(),
+        )
+        .unwrap();
+        assert_eq!(cfg.group.as_deref(), Some("work"));
         assert!(cfg.group_from_file);
         current(&cfg, &no_color()).unwrap();
     }
@@ -247,38 +241,30 @@ mod tests {
 
     // ── group use ─────────────────────────────────────────────────────────────
 
-    /// Switch group: session.yml is written with the new group name.
+    /// Switch group: session.yml is written with the new group lock.
     #[test]
     fn test_use_group_writes_session() {
         let session_dir = TempDir::new().unwrap();
         let session_path = session_dir.path().join("session.yml");
 
-        let layer_dir = TempDir::new().unwrap();
-        write_yaml(layer_dir.path(), "work.yaml", "connections: {}\n");
-        let dirs = [(layer_dir.path(), "user")];
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            &conn_with_group("work-srv", "10.0.0.1", "work"),
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(
+            TempDir::new().unwrap().path(),
+            Some(user.path()),
+            empty.path(),
+        );
 
-        use_group_impl("work", &session_path, &dirs, &no_color()).unwrap();
+        use_group_impl("work", &session_path, &cfg, &no_color()).unwrap();
 
         let ag = group::read_session_at(&session_path).unwrap();
-        assert_eq!(ag.name, "work");
+        assert_eq!(ag.name.as_deref(), Some("work"));
         assert!(ag.from_file);
-    }
-
-    /// Subsequent config loads use the new group after use_group writes session.
-    #[test]
-    fn test_use_group_subsequent_load_uses_new_group() {
-        let session_dir = TempDir::new().unwrap();
-        let session_path = session_dir.path().join("session.yml");
-
-        let layer_dir = TempDir::new().unwrap();
-        write_yaml(layer_dir.path(), "work.yaml", "connections: {}\n");
-        let dirs = [(layer_dir.path(), "user")];
-
-        use_group_impl("work", &session_path, &dirs, &no_color()).unwrap();
-
-        // Reading back directly confirms the group was persisted.
-        let ag = group::read_session_at(&session_path).unwrap();
-        assert_eq!(ag.name, "work");
     }
 
     /// Use unknown group: warning emitted but operation still succeeds and
@@ -288,57 +274,48 @@ mod tests {
         let session_dir = TempDir::new().unwrap();
         let session_path = session_dir.path().join("session.yml");
 
-        let empty_layer = TempDir::new().unwrap();
-        let dirs = [(empty_layer.path(), "user")];
+        let cwd = TempDir::new().unwrap();
+        let empty = TempDir::new().unwrap();
+        // Empty config — no connections with any group
+        let cfg = load(cwd.path(), None, empty.path());
 
-        // Must return Ok — warning is emitted but group is still set.
-        let result = use_group_impl("no-such-group", &session_path, &dirs, &no_color());
+        // Must return Ok — warning is emitted but group lock is still set.
+        let result = use_group_impl("no-such-group", &session_path, &cfg, &no_color());
         assert!(result.is_ok());
 
         // Session was written despite the warning.
         let ag = group::read_session_at(&session_path).unwrap();
-        assert_eq!(ag.name, "no-such-group");
+        assert_eq!(ag.name.as_deref(), Some("no-such-group"));
     }
 
-    /// Use group that exists in one layer but not another: still succeeds with
-    /// no warning because at least one layer has the file.
+    /// Use group that exists in connections: no warning, session written.
     #[test]
-    fn test_use_group_missing_in_some_layers_still_succeeds() {
+    fn test_use_group_existing_group_no_warning() {
         let session_dir = TempDir::new().unwrap();
         let session_path = session_dir.path().join("session.yml");
 
-        let project_dir = TempDir::new().unwrap();
-        write_yaml(project_dir.path(), "work.yaml", "connections: {}\n");
-        let system_dir = TempDir::new().unwrap(); // work.yaml absent in system layer
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            &conn_with_group("work-srv", "10.0.0.1", "work"),
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(
+            TempDir::new().unwrap().path(),
+            Some(user.path()),
+            empty.path(),
+        );
 
-        let dirs = [
-            (project_dir.path(), "project"),
-            (system_dir.path(), "system"),
-        ];
-
-        use_group_impl("work", &session_path, &dirs, &no_color()).unwrap();
-
-        let ag = group::read_session_at(&session_path).unwrap();
-        assert_eq!(ag.name, "work");
-    }
-
-    /// Use group with no layer dirs at all: behaves like unknown group (warning,
-    /// session written).
-    #[test]
-    fn test_use_group_no_dirs_does_not_block() {
-        let session_dir = TempDir::new().unwrap();
-        let session_path = session_dir.path().join("session.yml");
-
-        let result = use_group_impl("work", &session_path, &[], &no_color());
-        assert!(result.is_ok());
+        use_group_impl("work", &session_path, &cfg, &no_color()).unwrap();
 
         let ag = group::read_session_at(&session_path).unwrap();
-        assert_eq!(ag.name, "work");
+        assert_eq!(ag.name.as_deref(), Some("work"));
     }
 
     // ── group clear ───────────────────────────────────────────────────────────
 
-    /// Clear group: active_group is removed from session.yml, reverts to default.
+    /// Clear group: active_group is removed from session.yml, reverts to no lock.
     #[test]
     fn test_clear_removes_active_group() {
         let session_dir = TempDir::new().unwrap();
@@ -347,13 +324,13 @@ mod tests {
         // Write a group first.
         group::write_session_at(&session_path, Some("work")).unwrap();
         let ag = group::read_session_at(&session_path).unwrap();
-        assert_eq!(ag.name, "work");
+        assert_eq!(ag.name.as_deref(), Some("work"));
 
         // Clear it.
         clear_impl(&session_path).unwrap();
 
         let ag = group::read_session_at(&session_path).unwrap();
-        assert_eq!(ag.name, group::DEFAULT_GROUP);
+        assert!(ag.name.is_none());
         assert!(!ag.from_file);
     }
 
@@ -364,6 +341,6 @@ mod tests {
         // File does not exist — clear should still succeed.
         clear_impl(&session_path).unwrap();
         let ag = group::read_session_at(&session_path).unwrap();
-        assert_eq!(ag.name, group::DEFAULT_GROUP);
+        assert!(ag.name.is_none());
     }
 }

@@ -1,9 +1,13 @@
 //! Config layer loading, upward walk, and merge logic.
 //!
-//! Loads `<group>.yaml` from three layers in priority order (project >
+//! Loads `connections.yaml` from three layers in priority order (project >
 //! user > system), merges into a flat connection map with source tracking,
 //! and retains shadowed entries for `--all` display. Surfaces the resolved
 //! `docker` block when present.
+//!
+//! Groups are now inline: each connection may carry an optional `group` field.
+//! The active group (stored in `session.yml`) acts as a filter on the merged
+//! connection list, not as a file-name selector.
 
 // Public API is consumed by CLI command modules not yet implemented.
 #![allow(dead_code)]
@@ -51,6 +55,10 @@ struct RawConn {
     description: String,
     #[serde(default)]
     link: Option<String>,
+    /// Optional inline group tag. Connections without a `group:` field belong
+    /// to no group and are always shown unless a group filter is active.
+    #[serde(default)]
+    group: Option<String>,
 }
 
 fn default_port() -> u16 {
@@ -88,6 +96,8 @@ pub struct Connection {
     pub key: Option<String>,
     pub description: String,
     pub link: Option<String>,
+    /// Optional inline group tag from the YAML `group:` field.
+    pub group: Option<String>,
     /// The layer this entry was loaded from.
     pub layer: Layer,
     /// Path to the config file that defines this entry.
@@ -110,7 +120,7 @@ pub struct DockerConfig {
 #[derive(Debug)]
 pub struct LayerStatus {
     pub layer: Layer,
-    /// Path that was (or would be) loaded for this group and layer.
+    /// Path that was (or would be) loaded for this layer.
     pub path: PathBuf,
     /// `None` = file not found; `Some(n)` = number of connections in the file.
     pub connection_count: Option<usize>,
@@ -120,6 +130,8 @@ pub struct LayerStatus {
 #[derive(Debug)]
 pub struct LoadedConfig {
     /// Active connections — one per name, highest-priority layer wins.
+    /// This always contains the full unfiltered set; callers apply group
+    /// filtering via the helper methods.
     pub connections: Vec<Connection>,
     /// Active + shadowed connections interleaved for `--all` display.
     /// Shadowed entries appear immediately after their active counterpart.
@@ -132,8 +144,9 @@ pub struct LoadedConfig {
     pub project_dir: Option<PathBuf>,
     /// Security warnings collected during loading.
     pub warnings: Vec<security::Warning>,
-    /// The active group name.
-    pub group: String,
+    /// The active group name (locked group from session.yml), if any.
+    /// `None` means no lock — show all connections by default.
+    pub group: Option<String>,
     /// `true` = group was read from `session.yml`; `false` = using the default.
     pub group_from_file: bool,
 }
@@ -142,6 +155,73 @@ impl LoadedConfig {
     /// Find a connection by name (active connections only).
     pub fn find(&self, name: &str) -> Option<&Connection> {
         self.connections.iter().find(|c| c.name == name)
+    }
+
+    /// Return the connections that should be shown by default.
+    ///
+    /// - If `group_filter` is `Some(name)`, return only connections whose
+    ///   `group` field equals `name`.
+    /// - If `group_filter` is `None`, return all active connections.
+    ///
+    /// The `group_filter` may come from `--group <name>` (CLI flag, highest
+    /// priority) or from the locked group in `session.yml`.
+    pub fn filtered_connections(&self, group_filter: Option<&str>) -> Vec<&Connection> {
+        match group_filter {
+            Some(g) => self
+                .connections
+                .iter()
+                .filter(|c| c.group.as_deref() == Some(g))
+                .collect(),
+            None => self.connections.iter().collect(),
+        }
+    }
+
+    /// Determine the effective group filter to apply for `yconn list`.
+    ///
+    /// Precedence (highest to lowest):
+    ///   1. `--all` flag → no filter (returns `None`)
+    ///   2. `--group <name>` CLI flag → `Some(name)`
+    ///   3. Locked group from `session.yml` → `Some(name)`
+    ///   4. Default → no filter (`None`)
+    pub fn effective_group_filter<'a>(
+        &'a self,
+        all_flag: bool,
+        group_flag: Option<&'a str>,
+    ) -> Option<&'a str> {
+        if all_flag {
+            return None;
+        }
+        if let Some(g) = group_flag {
+            return Some(g);
+        }
+        self.group.as_deref()
+    }
+
+    /// Return unique group values present across all active connections.
+    /// Used by `yconn group list`.
+    pub fn discover_groups(&self) -> Vec<crate::group::GroupEntry> {
+        use std::collections::BTreeMap;
+        // BTreeMap keeps groups sorted by name for stable output.
+        let mut map: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+        for conn in &self.connections {
+            if let Some(ref g) = conn.group {
+                let layer_label = conn.layer.label().to_string();
+                map.entry(g.clone()).or_default().push(layer_label.clone());
+            }
+        }
+
+        // Deduplicate layer labels while preserving insertion order.
+        map.into_iter()
+            .map(|(name, raw_layers)| {
+                let mut seen = std::collections::HashSet::new();
+                let layers: Vec<String> = raw_layers
+                    .into_iter()
+                    .filter(|l| seen.insert(l.clone()))
+                    .collect();
+                crate::group::GroupEntry { name, layers }
+            })
+            .collect()
     }
 }
 
@@ -163,7 +243,7 @@ pub fn load_from(cwd: &Path) -> Result<LoadedConfig> {
     let system_dir = PathBuf::from("/etc/yconn");
     load_impl(
         cwd,
-        &ag.name,
+        ag.name.as_deref(),
         ag.from_file,
         user_dir.as_deref(),
         &system_dir,
@@ -177,9 +257,12 @@ type RawLayer = (Vec<(String, RawConn)>, Layer, PathBuf);
 
 /// Core load logic with all paths explicit — used directly by tests and
 /// command-layer integration tests.
+///
+/// `group` is now `Option<&str>`: `None` means no lock (show all by default),
+/// `Some(name)` means a group is locked in session.yml.
 pub(crate) fn load_impl(
     cwd: &Path,
-    group: &str,
+    group: Option<&str>,
     group_from_file: bool,
     user_dir: Option<&Path>,
     system_dir: &Path,
@@ -187,9 +270,10 @@ pub(crate) fn load_impl(
     let mut warnings: Vec<security::Warning> = Vec::new();
 
     // ── Resolve paths ────────────────────────────────────────────────────────
-    let (project_dir, project_file) = upward_walk(cwd, group);
-    let user_file = user_dir.map(|d| d.join(format!("{group}.yaml")));
-    let system_file = system_dir.join(format!("{group}.yaml"));
+    // Always load from `connections.yaml` — groups are inline fields now.
+    let (project_dir, project_file) = upward_walk(cwd);
+    let user_file = user_dir.map(|d| d.join("connections.yaml"));
+    let system_file = system_dir.join("connections.yaml");
 
     // ── Load each layer ──────────────────────────────────────────────────────
     let proj = load_layer(project_file.as_deref(), Layer::Project, true, &mut warnings)?;
@@ -241,14 +325,14 @@ pub(crate) fn load_impl(
             layer: Layer::Project,
             path: project_file
                 .clone()
-                .unwrap_or_else(|| PathBuf::from(format!(".yconn/{group}.yaml"))),
+                .unwrap_or_else(|| PathBuf::from(".yconn/connections.yaml")),
             connection_count: proj.found.then_some(proj.count),
         },
         LayerStatus {
             layer: Layer::User,
             path: user_file
                 .clone()
-                .unwrap_or_else(|| PathBuf::from(format!("~/.config/yconn/{group}.yaml"))),
+                .unwrap_or_else(|| PathBuf::from("~/.config/yconn/connections.yaml")),
             connection_count: user.found.then_some(user.count),
         },
         LayerStatus {
@@ -265,7 +349,7 @@ pub(crate) fn load_impl(
         layers,
         project_dir,
         warnings,
-        group: group.to_string(),
+        group: group.map(str::to_owned),
         group_from_file,
     })
 }
@@ -337,18 +421,17 @@ fn load_layer(
 
 // ─── Upward walk ─────────────────────────────────────────────────────────────
 
-/// Walk upward from `cwd` looking for `.yconn/<group>.yaml`, stopping at
+/// Walk upward from `cwd` looking for `.yconn/connections.yaml`, stopping at
 /// `$HOME` or the filesystem root.
 ///
 /// Returns `(yconn_dir, config_file)` when found, `(None, None)` otherwise.
-fn upward_walk(cwd: &Path, group: &str) -> (Option<PathBuf>, Option<PathBuf>) {
+fn upward_walk(cwd: &Path) -> (Option<PathBuf>, Option<PathBuf>) {
     let home = dirs::home_dir();
-    let filename = format!("{group}.yaml");
     let mut dir = cwd.to_path_buf();
 
     loop {
         let yconn_dir = dir.join(".yconn");
-        let config_file = yconn_dir.join(&filename);
+        let config_file = yconn_dir.join("connections.yaml");
         if config_file.exists() {
             return (Some(yconn_dir), Some(config_file));
         }
@@ -425,6 +508,7 @@ fn build_connection(
         key: raw.key.clone(),
         description: raw.description.clone(),
         link: raw.link.clone(),
+        group: raw.group.clone(),
         layer,
         source_path: path.to_path_buf(),
         shadowed,
@@ -463,8 +547,23 @@ mod tests {
         )
     }
 
+    fn conn_with_group(name: &str, host: &str, group: &str) -> String {
+        format!(
+            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth: key\n    description: desc\n    group: {group}\n"
+        )
+    }
+
     fn load_test(cwd: &Path, user_dir: Option<&Path>, system_dir: &Path) -> LoadedConfig {
-        load_impl(cwd, "connections", false, user_dir, system_dir).unwrap()
+        load_impl(cwd, None, false, user_dir, system_dir).unwrap()
+    }
+
+    fn load_test_with_group(
+        cwd: &Path,
+        user_dir: Option<&Path>,
+        system_dir: &Path,
+        group: Option<&str>,
+    ) -> LoadedConfig {
+        load_impl(cwd, group, group.is_some(), user_dir, system_dir).unwrap()
     }
 
     // ── upward walk ───────────────────────────────────────────────────────────
@@ -479,7 +578,7 @@ mod tests {
         let nested = root.path().join("a").join("b").join("c");
         fs::create_dir_all(&nested).unwrap();
 
-        let (dir, file) = upward_walk(&nested, "connections");
+        let (dir, file) = upward_walk(&nested);
         assert_eq!(dir.unwrap(), yconn);
         assert!(file.unwrap().exists());
     }
@@ -487,7 +586,7 @@ mod tests {
     #[test]
     fn test_upward_walk_no_config() {
         let dir = TempDir::new().unwrap();
-        let (d, f) = upward_walk(dir.path(), "connections");
+        let (d, f) = upward_walk(dir.path());
         assert!(d.is_none());
         assert!(f.is_none());
     }
@@ -513,7 +612,7 @@ mod tests {
             &simple_conn("inner", "2.2.2.2"),
         );
 
-        let (_, file) = upward_walk(&inner, "connections");
+        let (_, file) = upward_walk(&inner);
         let content = fs::read_to_string(file.unwrap()).unwrap();
         assert!(content.contains("inner"));
     }
@@ -955,5 +1054,196 @@ mod tests {
         assert_eq!(cfg.layers[0].connection_count, None); // project not found
         assert_eq!(cfg.layers[1].connection_count, Some(2)); // user: 2 connections
         assert_eq!(cfg.layers[2].connection_count, None); // system not found
+    }
+
+    // ── inline group field ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_group_field_round_trip() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            &conn_with_group("work-srv", "10.0.0.1", "work"),
+        );
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+        let conn = cfg.find("work-srv").unwrap();
+        assert_eq!(conn.group.as_deref(), Some("work"));
+    }
+
+    #[test]
+    fn test_group_field_absent_is_none() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            &simple_conn("srv", "1.2.3.4"),
+        );
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+        let conn = cfg.find("srv").unwrap();
+        assert!(conn.group.is_none());
+    }
+
+    // ── group filtering ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_filtered_connections_no_filter() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        let yaml = format!(
+            "{}\n{}",
+            conn_with_group("work-srv", "10.0.0.1", "work"),
+            // Simple conn in same connections block — just append raw
+            "  plain-srv:\n    host: 10.0.0.2\n    user: user\n    auth: key\n    description: desc\n"
+        );
+        write_yaml(user.path(), "connections.yaml", &yaml);
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+        // No filter → all connections returned
+        let filtered = cfg.filtered_connections(None);
+        assert_eq!(filtered.len(), 2);
+    }
+
+    #[test]
+    fn test_filtered_connections_with_group_filter() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        let yaml = format!(
+            "{}\n{}",
+            conn_with_group("work-srv", "10.0.0.1", "work"),
+            "  plain-srv:\n    host: 10.0.0.2\n    user: user\n    auth: key\n    description: desc\n"
+        );
+        write_yaml(user.path(), "connections.yaml", &yaml);
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+        // Filter by "work" group → only work-srv returned
+        let filtered = cfg.filtered_connections(Some("work"));
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "work-srv");
+    }
+
+    #[test]
+    fn test_effective_group_filter_all_overrides_everything() {
+        let cwd = TempDir::new().unwrap();
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test_with_group(cwd.path(), None, empty.path(), Some("work"));
+        // --all overrides locked group
+        assert_eq!(cfg.effective_group_filter(true, None), None);
+    }
+
+    #[test]
+    fn test_effective_group_filter_group_flag_overrides_lock() {
+        let cwd = TempDir::new().unwrap();
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test_with_group(cwd.path(), None, empty.path(), Some("work"));
+        // --group private overrides locked "work"
+        assert_eq!(
+            cfg.effective_group_filter(false, Some("private")),
+            Some("private")
+        );
+    }
+
+    #[test]
+    fn test_effective_group_filter_locked_group_used() {
+        let cwd = TempDir::new().unwrap();
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test_with_group(cwd.path(), None, empty.path(), Some("work"));
+        // No --all, no --group flag → locked group used
+        assert_eq!(cfg.effective_group_filter(false, None), Some("work"));
+    }
+
+    #[test]
+    fn test_effective_group_filter_no_lock_no_flags() {
+        let cwd = TempDir::new().unwrap();
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test(cwd.path(), None, empty.path());
+        // No lock, no flags → None (show all)
+        assert_eq!(cfg.effective_group_filter(false, None), None);
+    }
+
+    // ── discover_groups ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_discover_groups_empty() {
+        let cwd = TempDir::new().unwrap();
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test(cwd.path(), None, empty.path());
+        let groups = cfg.discover_groups();
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn test_discover_groups_from_connections() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        let yaml = format!(
+            "{}\n{}",
+            conn_with_group("work-srv", "10.0.0.1", "work"),
+            "  private-srv:\n    host: 10.0.0.2\n    user: user\n    auth: key\n    description: desc\n    group: private\n"
+        );
+        write_yaml(user.path(), "connections.yaml", &yaml);
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+        let groups = cfg.discover_groups();
+        assert_eq!(groups.len(), 2);
+        let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
+        assert!(names.contains(&"work"));
+        assert!(names.contains(&"private"));
+    }
+
+    #[test]
+    fn test_discover_groups_sorted_by_name() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        let yaml = format!(
+            "{}\n{}",
+            conn_with_group("z-srv", "10.0.0.1", "zebra"),
+            "  a-srv:\n    host: 10.0.0.2\n    user: user\n    auth: key\n    description: desc\n    group: alpha\n"
+        );
+        write_yaml(user.path(), "connections.yaml", &yaml);
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+        let groups = cfg.discover_groups();
+        let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha", "zebra"]);
+    }
+
+    #[test]
+    fn test_discover_groups_tracks_layers() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            &conn_with_group("p-srv", "10.0.0.1", "work"),
+        );
+
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            &conn_with_group("u-srv", "10.0.0.2", "work"),
+        );
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(root.path(), Some(user.path()), empty.path());
+        let groups = cfg.discover_groups();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].name, "work");
+        // Both project and user layers have a "work" connection
+        let layers = &groups[0].layers;
+        assert!(layers.contains(&"project".to_string()));
+        assert!(layers.contains(&"user".to_string()));
     }
 }

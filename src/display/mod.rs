@@ -52,7 +52,8 @@ pub struct DockerInfo {
 
 /// Full status for `yconn config`.
 pub struct ConfigStatus {
-    pub group: String,
+    /// The locked group name, or `None` when no group is locked.
+    pub group: Option<String>,
     /// `true` = read from `session.yml`; `false` = using the default.
     pub group_from_file: bool,
     pub layers: Vec<LayerInfo>,
@@ -74,7 +75,8 @@ pub struct LayerCurrentInfo {
 
 /// Full status for `yconn group current`.
 pub struct GroupCurrentStatus {
-    pub active_group: String,
+    /// The locked group name, or `None` when no group is locked.
+    pub active_group: Option<String>,
     pub session_file: String,
     pub layers: Vec<LayerCurrentInfo>,
 }
@@ -270,13 +272,19 @@ impl Renderer {
         const LABEL_W: usize = 9;
         let mut out = String::new();
 
-        if status.group_from_file {
-            out.push_str(&format!(
-                "Group:   {}  (set in ~/.config/yconn/session.yml)\n",
-                status.group
-            ));
-        } else {
-            out.push_str(&format!("Group:   {}  (default)\n", status.group));
+        match &status.group {
+            Some(g) if status.group_from_file => {
+                out.push_str(&format!(
+                    "Group:   {}  (set in ~/.config/yconn/session.yml)\n",
+                    g
+                ));
+            }
+            Some(g) => {
+                out.push_str(&format!("Group:   {}  (default)\n", g));
+            }
+            None => {
+                out.push_str("Group:   (none — showing all connections)\n");
+            }
         }
         out.push('\n');
 
@@ -363,7 +371,11 @@ impl Renderer {
         const LABEL_W: usize = 9; // "[project]" is 9 chars
         let mut out = String::new();
 
-        out.push_str(&format!("Active group: {}\n", status.active_group));
+        let group_display = status
+            .active_group
+            .as_deref()
+            .unwrap_or("(none — showing all connections)");
+        out.push_str(&format!("Active group: {}\n", group_display));
         out.push_str(&format!("Lock file:    {}\n", status.session_file));
         out.push('\n');
         out.push_str("Resolved config files:\n");
@@ -675,7 +687,7 @@ mod tests {
     #[test]
     fn test_config_status_default_group_no_docker() {
         let status = ConfigStatus {
-            group: "connections".into(),
+            group: Some("connections".to_string()),
             group_from_file: false,
             layers: vec![
                 LayerInfo {
@@ -708,7 +720,7 @@ mod tests {
     #[test]
     fn test_config_status_from_file_with_docker() {
         let status = ConfigStatus {
-            group: "work".into(),
+            group: Some("work".to_string()),
             group_from_file: true,
             layers: vec![LayerInfo {
                 label: "project".into(),
@@ -770,7 +782,7 @@ mod tests {
     #[test]
     fn test_group_current_found_and_not_found() {
         let status = GroupCurrentStatus {
-            active_group: "work".into(),
+            active_group: Some("work".to_string()),
             session_file: "~/.config/yconn/session.yml".into(),
             layers: vec![
                 LayerCurrentInfo {

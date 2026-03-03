@@ -52,7 +52,7 @@ mod tests {
         user: Option<&std::path::Path>,
         sys: &std::path::Path,
     ) -> config::LoadedConfig {
-        config::load_impl(cwd, "connections", false, user, sys).unwrap()
+        config::load_impl(cwd, Some("connections"), false, user, sys).unwrap()
     }
 
     #[test]

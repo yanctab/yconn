@@ -58,11 +58,8 @@ pub(crate) fn run_impl(
     input: &mut dyn BufRead,
     output: &mut dyn Write,
 ) -> Result<()> {
-    let group = crate::group::active_group()
-        .context("cannot determine active group")?
-        .name;
-
-    let target = layer_dir.join(format!("{group}.yaml"));
+    // Always write to connections.yaml — groups are inline fields, not per-file.
+    let target = layer_dir.join("connections.yaml");
 
     writeln!(
         output,

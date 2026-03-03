@@ -75,15 +75,12 @@ fn load_and_warn(renderer: &display::Renderer, verbose: bool) -> Result<config::
         renderer.warn(&w.message);
     }
     if verbose {
-        renderer.verbose(&format!(
-            "Active group: {} ({})",
-            cfg.group,
-            if cfg.group_from_file {
-                "from session.yml"
-            } else {
-                "default"
-            }
-        ));
+        let group_desc = match &cfg.group {
+            Some(g) if cfg.group_from_file => format!("{g} (from session.yml)"),
+            Some(g) => format!("{g} (default)"),
+            None => "none (showing all connections)".to_string(),
+        };
+        renderer.verbose(&format!("Active group: {group_desc}"));
         for l in &cfg.layers {
             renderer.verbose(&format!(
                 "[{}] {} — {}",
