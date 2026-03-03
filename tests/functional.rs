@@ -789,3 +789,64 @@ fn project_layer_wins_over_user() {
         "expected user-host to be shadowed by project layer, got: {stdout}"
     );
 }
+
+// ─── Wildcard pattern matching ────────────────────────────────────────────────
+
+/// `yconn connect` with a wildcard pattern match: mock ssh receives
+/// `user@<input-hostname>` — the matched input is used as the host.
+#[test]
+fn wildcard_pattern_match_ssh_receives_input_as_host() {
+    let env = TestEnv::new();
+
+    // Pattern "web-*" in user config — any "web-<something>" input matches.
+    env.write_user_config(
+        "connections",
+        "connections:\n  web-*:\n    host: placeholder.internal\n    user: deploy\n    auth: password\n    description: Wildcard web servers\n",
+    );
+
+    // Connect using a concrete hostname that matches the pattern.
+    // Run inside container so Docker bootstrap is skipped.
+    let out = env.run_in_container(&["connect", "web-staging"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // Mock ssh must receive "deploy@web-staging" — the input, NOT "placeholder.internal".
+    assert!(
+        stdout.contains("deploy@web-staging"),
+        "expected 'deploy@web-staging' in stdout (input used as host), got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("placeholder.internal"),
+        "expected placeholder host to NOT appear in stdout, got: {stdout}"
+    );
+}
+
+/// `yconn connect` with two conflicting wildcard patterns exits non-zero and
+/// names both patterns in stderr.
+#[test]
+fn wildcard_conflict_exits_nonzero_with_pattern_names_in_stderr() {
+    let env = TestEnv::new();
+
+    // Two patterns that both match "web-prod": "web-*" and "?eb-prod".
+    // Note: a bare `*` at the start of a YAML key is a YAML anchor — quote it.
+    env.write_user_config(
+        "connections",
+        "connections:\n  web-*:\n    host: ph1\n    user: deploy\n    auth: password\n    description: Web wildcard\n  \"?eb-prod\":\n    host: ph2\n    user: admin\n    auth: password\n    description: Prefix wildcard\n",
+    );
+
+    let out = env.run_in_container(&["connect", "web-prod"]);
+    assert!(
+        !out.status.success(),
+        "expected non-zero exit for conflicting wildcard patterns, got 0"
+    );
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("web-*"),
+        "expected pattern 'web-*' named in stderr, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("?eb-prod"),
+        "expected pattern '?eb-prod' named in stderr, got: {stderr}"
+    );
+}
