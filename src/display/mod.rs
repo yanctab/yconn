@@ -542,7 +542,10 @@ mod tests {
         let mut rows = sample_rows();
         rows[0].link = Some("https://wiki.internal/servers/prod-web".into());
         let out = r().render_list(&rows);
-        assert!(out.contains("LINK"), "expected LINK header when a row has a link");
+        assert!(
+            out.contains("LINK"),
+            "expected LINK header when a row has a link"
+        );
         assert!(
             out.contains("https://wiki.internal/servers/prod-web"),
             "expected link URL in output"
@@ -552,7 +555,10 @@ mod tests {
     #[test]
     fn test_list_link_column_absent_when_no_rows_have_link() {
         let out = r().render_list(&sample_rows());
-        assert!(!out.contains("LINK"), "expected no LINK header when no row has a link");
+        assert!(
+            !out.contains("LINK"),
+            "expected no LINK header when no row has a link"
+        );
     }
 
     #[test]
@@ -581,7 +587,10 @@ mod tests {
         rows[0].link = Some(short_url.into());
         let out = r().render_list(&rows);
         assert!(out.contains(short_url), "short URL should appear verbatim");
-        assert!(!out.contains('\u{2026}'), "no ellipsis expected for short URL");
+        assert!(
+            !out.contains('\u{2026}'),
+            "no ellipsis expected for short URL"
+        );
     }
 
     #[test]
@@ -599,7 +608,10 @@ mod tests {
             shadowed: true,
         });
         let out = r().render_list(&rows);
-        assert!(out.contains("LINK"), "expected LINK column when shadowed row has a link");
+        assert!(
+            out.contains("LINK"),
+            "expected LINK column when shadowed row has a link"
+        );
         assert!(
             out.contains("https://wiki.internal/bastion"),
             "expected shadowed row's link in output"
