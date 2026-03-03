@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 use crate::config::LoadedConfig;
 use crate::display::Renderer;
@@ -12,9 +12,7 @@ use crate::{connect, docker, security};
 // ─── Public command entry point ───────────────────────────────────────────────
 
 pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str, verbose: bool) -> Result<()> {
-    let conn = cfg
-        .find(name)
-        .ok_or_else(|| anyhow!("no connection named '{name}'"))?;
+    let conn = cfg.find_with_wildcard(name)?;
 
     // Security: validate the key file before trying to connect.
     // Expand a leading `~` so that the existence and permission checks operate
@@ -39,10 +37,10 @@ pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str, verbose: bool) -
 
     // Direct SSH path: replace the current process with ssh.
     if verbose {
-        let ssh_args = connect::build_args(conn);
+        let ssh_args = connect::build_args(&conn);
         renderer.verbose_ssh_cmd(&ssh_args);
     }
-    connect::exec(conn)
+    connect::exec(&conn)
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────
@@ -91,9 +89,7 @@ mod tests {
         original_argv: &[String],
         in_container: bool,
     ) -> Result<ConnectPlan> {
-        let conn = cfg
-            .find(name)
-            .ok_or_else(|| anyhow!("no connection named '{name}'"))?;
+        let conn = cfg.find_with_wildcard(name)?;
 
         if let Some(ref docker_cfg) = cfg.docker {
             if !in_container {
@@ -102,7 +98,7 @@ mod tests {
             }
         }
 
-        Ok(ConnectPlan::Ssh(connect::build_args(conn)))
+        Ok(ConnectPlan::Ssh(connect::build_args(&conn)))
     }
 
     fn write_yaml(dir: &std::path::Path, name: &str, content: &str) {

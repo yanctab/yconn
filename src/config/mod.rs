@@ -163,6 +163,69 @@ impl LoadedConfig {
         self.connections.iter().find(|c| c.name == name)
     }
 
+    /// Find a connection by exact name or by wildcard pattern matching.
+    ///
+    /// Resolution order:
+    /// 1. Try an exact name lookup first — an exact match always wins.
+    /// 2. Scan all active (non-shadowed) connections whose names contain `*`
+    ///    or `?` for patterns that match `input` using glob-style matching.
+    /// 3. If exactly one pattern matches, return a clone of that connection
+    ///    with `host` replaced by `input` (the matched input IS the host).
+    /// 4. If two or more *different* patterns match, return an error naming
+    ///    each conflicting pattern and its source layer/file.
+    /// 5. Same-pattern shadowing across layers is handled by the existing
+    ///    priority merge — only the winning entry is in `self.connections`,
+    ///    so the same pattern name never appears twice here.
+    pub fn find_with_wildcard(&self, input: &str) -> anyhow::Result<Connection> {
+        use wildmatch::WildMatch;
+
+        // Step 1: exact name lookup.
+        if let Some(conn) = self.find(input) {
+            return Ok(conn.clone());
+        }
+
+        // Step 2: scan wildcard patterns in the active (non-shadowed) set.
+        let mut matches: Vec<&Connection> = Vec::new();
+        for conn in &self.connections {
+            let is_pattern = conn.name.contains('*') || conn.name.contains('?');
+            if is_pattern && WildMatch::new(&conn.name).matches(input) {
+                matches.push(conn);
+            }
+        }
+
+        match matches.len() {
+            0 => Err(anyhow::anyhow!("no connection named '{input}'")),
+            1 => {
+                let mut resolved = matches[0].clone();
+                // The matched input IS the host — override the pattern's host
+                // field with the literal input string.
+                resolved.host = input.to_string();
+                Ok(resolved)
+            }
+            _ => {
+                // Two or more *different* patterns matched — that is a conflict.
+                // (Same-pattern shadowing never reaches here because merge keeps
+                // only one winner per pattern name in self.connections.)
+                let conflict_list: Vec<String> = matches
+                    .iter()
+                    .map(|c| {
+                        format!(
+                            "  '{}' (layer: {}, file: {})",
+                            c.name,
+                            c.layer.label(),
+                            c.source_path.display()
+                        )
+                    })
+                    .collect();
+                Err(anyhow::anyhow!(
+                    "connection name '{}' matches multiple wildcard patterns:\n{}",
+                    input,
+                    conflict_list.join("\n")
+                ))
+            }
+        }
+    }
+
     /// Return the connections that should be shown by default.
     ///
     /// - If `group_filter` is `Some(name)`, return only connections whose
@@ -1375,5 +1438,151 @@ mod tests {
         let layers = &groups[0].layers;
         assert!(layers.contains(&"project".to_string()));
         assert!(layers.contains(&"user".to_string()));
+    }
+
+    // ── wildcard pattern matching ─────────────────────────────────────────────
+
+    /// A single wildcard pattern matches the input — connection proceeds with
+    /// the input as the host.
+    #[test]
+    fn test_wildcard_single_pattern_matches() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        // Pattern "web-*" should match "web-prod".
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  web-*:\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Wildcard web\n",
+        );
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+        let conn = cfg.find_with_wildcard("web-prod").unwrap();
+        // The matched input must replace the host field.
+        assert_eq!(conn.host, "web-prod");
+        assert_eq!(conn.user, "deploy");
+        // The connection name stays as the pattern.
+        assert_eq!(conn.name, "web-*");
+    }
+
+    /// No exact name and no wildcard pattern matches — error returned.
+    #[test]
+    fn test_wildcard_no_match_returns_error() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  web-*:\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Wildcard web\n",
+        );
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+        let err = cfg.find_with_wildcard("db-prod").unwrap_err();
+        assert!(
+            err.to_string().contains("db-prod"),
+            "error must name the input: {err}"
+        );
+    }
+
+    /// Two different wildcard patterns both match the same input — conflict error.
+    #[test]
+    fn test_wildcard_conflict_two_patterns_same_input() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        // Both "web-*" and "?eb-prod" match "web-prod".
+        // Note: bare `*` at the start of a YAML key is an anchor — quote it.
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  web-*:\n    host: ph1\n    user: deploy\n    auth: password\n    description: Web wildcard\n  \"?eb-prod\":\n    host: ph2\n    user: admin\n    auth: password\n    description: Prefix wildcard\n",
+        );
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+        let err = cfg.find_with_wildcard("web-prod").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("web-*"),
+            "error must name pattern 'web-*': {msg}"
+        );
+        assert!(
+            msg.contains("?eb-prod"),
+            "error must name pattern '?eb-prod': {msg}"
+        );
+    }
+
+    /// Exact name always beats a matching wildcard pattern — no conflict check.
+    #[test]
+    fn test_wildcard_exact_name_beats_pattern() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        // "web-prod" is an exact entry AND "web-*" would also match.
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  web-prod:\n    host: exact-host\n    user: exact-user\n    auth: password\n    description: Exact match\n  web-*:\n    host: wildcard-host\n    user: wildcard-user\n    auth: password\n    description: Wildcard\n",
+        );
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+        let conn = cfg.find_with_wildcard("web-prod").unwrap();
+        // Exact match wins — host is NOT replaced by the input.
+        assert_eq!(conn.host, "exact-host");
+        assert_eq!(conn.user, "exact-user");
+        assert_eq!(conn.name, "web-prod");
+    }
+
+    /// Same pattern in two layers is shadowing (priority merge), NOT a conflict.
+    /// Only the winning (higher-priority) entry should be in the active map, so
+    /// `find_with_wildcard` sees exactly one match and succeeds.
+    #[test]
+    fn test_wildcard_same_pattern_in_two_layers_is_shadowing_not_conflict() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        // Project layer defines "host-*" with user "project-user".
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            "connections:\n  host-*:\n    host: proj-host\n    user: project-user\n    auth: password\n    description: Project wildcard\n",
+        );
+
+        let user = TempDir::new().unwrap();
+        // User layer also defines "host-*" — this is shadowed by the project layer.
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  host-*:\n    host: user-host\n    user: user-user\n    auth: password\n    description: User wildcard\n",
+        );
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(root.path(), Some(user.path()), empty.path());
+        // Should succeed: only the project entry is in the active set.
+        let conn = cfg.find_with_wildcard("host-anything").unwrap();
+        assert_eq!(conn.host, "host-anything", "input must replace host");
+        assert_eq!(conn.user, "project-user", "project layer must win");
+    }
+
+    /// A `?` wildcard matches exactly one character.
+    #[test]
+    fn test_wildcard_question_mark_single_char() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        // "web-?" matches "web-1" but not "web-12".
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  web-?:\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Single char wildcard\n",
+        );
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+
+        let conn = cfg.find_with_wildcard("web-1").unwrap();
+        assert_eq!(conn.host, "web-1");
+
+        let err = cfg.find_with_wildcard("web-12").unwrap_err();
+        assert!(err.to_string().contains("web-12"));
     }
 }
