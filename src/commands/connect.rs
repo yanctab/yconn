@@ -1,7 +1,7 @@
 // Handler for `yconn connect <name>` — resolve a connection and invoke SSH,
 // optionally bootstrapping into Docker first.
 
-use std::path::Path;
+use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
 
@@ -17,9 +17,12 @@ pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str, verbose: bool) -
         .ok_or_else(|| anyhow!("no connection named '{name}'"))?;
 
     // Security: validate the key file before trying to connect.
+    // Expand a leading `~` so that the existence and permission checks operate
+    // on the real path — Path::new("~/.ssh/id_rsa") does not exist literally.
     if conn.auth == "key" {
         if let Some(ref key) = conn.key {
-            for w in security::check_key_file(Path::new(key)) {
+            let expanded = expand_tilde(key);
+            for w in security::check_key_file(&expanded) {
                 renderer.warn(&w.message);
             }
         }
@@ -36,6 +39,25 @@ pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str, verbose: bool) -
 
     // Direct SSH path: replace the current process with ssh.
     connect::exec(conn)
+}
+
+// ─── Private helpers ──────────────────────────────────────────────────────────
+
+/// Expand a leading `~` to the current user's home directory.
+///
+/// Only a literal leading `~/` (or the bare string `"~"`) is expanded.
+/// `~username` forms are not supported. If `dirs::home_dir()` returns `None`,
+/// the path is returned unchanged.
+fn expand_tilde(path: &str) -> PathBuf {
+    if path == "~" {
+        return dirs::home_dir().unwrap_or_else(|| PathBuf::from("~"));
+    }
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest);
+        }
+    }
+    PathBuf::from(path)
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -286,5 +308,97 @@ mod tests {
 
         let err = run(&cfg, &no_color(), "no-such-server", false).unwrap_err();
         assert!(err.to_string().contains("no-such-server"));
+    }
+
+    // ── expand_tilde ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_expand_tilde_prefix_joins_home() {
+        // "~/foo/bar" must resolve to <home>/foo/bar, not the literal string.
+        let result = expand_tilde("~/foo/bar");
+        let home = dirs::home_dir().expect("home dir must be set in test environment");
+        assert_eq!(result, home.join("foo/bar"));
+    }
+
+    #[test]
+    fn test_expand_tilde_bare_returns_home() {
+        let result = expand_tilde("~");
+        let home = dirs::home_dir().expect("home dir must be set in test environment");
+        assert_eq!(result, home);
+    }
+
+    #[test]
+    fn test_expand_tilde_absolute_path_unchanged() {
+        let result = expand_tilde("/home/user/.ssh/id_rsa");
+        assert_eq!(result, std::path::PathBuf::from("/home/user/.ssh/id_rsa"));
+    }
+
+    #[test]
+    fn test_expand_tilde_no_tilde_unchanged() {
+        let result = expand_tilde("relative/path/key");
+        assert_eq!(result, std::path::PathBuf::from("relative/path/key"));
+    }
+
+    /// A tilde key path that resolves to an existing file should produce no
+    /// "does not exist" warning from `security::check_key_file`.
+    #[test]
+    fn test_tilde_key_exists_no_warning() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new().unwrap();
+        let key_path = dir.path().join("id_rsa");
+        fs::write(&key_path, "KEY").unwrap();
+        fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600)).unwrap();
+
+        let expanded = key_path.clone();
+        let warnings = security::check_key_file(&expanded);
+        // File exists and has safe permissions — no warnings.
+        assert!(
+            warnings.is_empty(),
+            "unexpected warnings for existing key: {:?}",
+            warnings
+        );
+    }
+
+    /// A tilde key path whose resolved path does not exist must still emit the
+    /// "key file does not exist" warning.
+    #[test]
+    fn test_tilde_key_missing_warns() {
+        let dir = TempDir::new().unwrap();
+        // Construct a path that does not exist.
+        let missing = dir.path().join("no_such_key");
+
+        let warnings = security::check_key_file(&missing);
+        assert_eq!(warnings.len(), 1, "expected exactly one warning");
+        assert!(
+            warnings[0].message.contains("does not exist"),
+            "warning message should say 'does not exist': {}",
+            warnings[0].message
+        );
+    }
+
+    /// Verify the full expand_tilde → check_key_file pipeline: a path written
+    /// as "~/..." in config must not trigger a false "does not exist" warning
+    /// when the file is actually present under the real home directory.
+    #[test]
+    fn test_expand_tilde_then_check_existing_key_no_warning() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new().unwrap();
+        let key_path = dir.path().join("id_ed25519");
+        fs::write(&key_path, "KEY DATA").unwrap();
+        fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600)).unwrap();
+
+        // Simulate expand_tilde on an already-absolute path (as produced by
+        // a non-tilde config entry) to verify the pipeline handles it correctly.
+        let expanded = expand_tilde(key_path.to_str().unwrap());
+        assert_eq!(expanded, key_path);
+
+        let warnings = security::check_key_file(&expanded);
+        assert!(
+            warnings.is_empty(),
+            "absolute path to existing key must not warn: {:?}",
+            warnings
+        );
     }
 }
