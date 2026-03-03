@@ -634,6 +634,130 @@ fn edit_invokes_editor_with_correct_file_path() {
     let _ = expected_path; // path confirmed parseable via show above
 }
 
+// ─── Parse error scenarios ────────────────────────────────────────────────────
+
+/// A manually created minimal valid project config — `yconn list` shows the entry.
+#[test]
+fn parse_error_minimal_valid_project_config() {
+    let env = TestEnv::new();
+    // Write the config by hand (not using conn_key/conn_password helpers) to
+    // simulate a manually created file with all required fields present.
+    env.write_project_config(
+        "connections",
+        "connections:\n  my-server:\n    host: 10.0.0.1\n    user: admin\n    auth: password\n    description: My server\n",
+    );
+
+    let out = env.run(&["list"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("my-server"),
+        "expected 'my-server' in list output, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("10.0.0.1"),
+        "expected host '10.0.0.1' in list output, got: {stdout}"
+    );
+}
+
+/// A manually created minimal valid user layer config — `yconn list` shows the entry.
+#[test]
+fn parse_error_minimal_valid_user_config() {
+    let env = TestEnv::new();
+    // Write directly to the user layer config directory.
+    env.write_user_config(
+        "connections",
+        "connections:\n  user-server:\n    host: 192.168.1.5\n    user: root\n    auth: password\n    description: User server\n",
+    );
+
+    let out = env.run(&["list"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("user-server"),
+        "expected 'user-server' in list output, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("192.168.1.5"),
+        "expected host '192.168.1.5' in list output, got: {stdout}"
+    );
+}
+
+/// A connection entry missing a required field — `yconn list` exits non-zero
+/// with a clear error message naming the file, entry, and missing field.
+#[test]
+fn parse_error_missing_required_field() {
+    let env = TestEnv::new();
+    // 'host' field is intentionally absent.
+    env.write_project_config(
+        "connections",
+        "connections:\n  bad-server:\n    user: admin\n    auth: password\n    description: Missing host\n",
+    );
+
+    let out = env.run(&["list"]);
+    assert!(
+        !out.status.success(),
+        "expected non-zero exit for missing required field, got 0"
+    );
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("bad-server"),
+        "expected connection name 'bad-server' in error, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("host"),
+        "expected missing field 'host' named in error, got: {stderr}"
+    );
+}
+
+/// Invalid YAML syntax — `yconn list` exits non-zero with the file name in
+/// the error message.
+#[test]
+fn parse_error_invalid_yaml_syntax() {
+    let env = TestEnv::new();
+    // Write deliberately malformed YAML.
+    env.write_project_config(
+        "connections",
+        "connections:\n  broken: [unclosed bracket\n    host: 10.0.0.1\n",
+    );
+
+    let out = env.run(&["list"]);
+    assert!(
+        !out.status.success(),
+        "expected non-zero exit for invalid YAML, got 0"
+    );
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("connections.yaml"),
+        "expected config file name 'connections.yaml' in error, got: {stderr}"
+    );
+}
+
+/// Valid YAML with an empty `connections` block — `yconn list` exits 0 and
+/// shows no connection entries (no error).
+#[test]
+fn parse_error_empty_connections_block() {
+    let env = TestEnv::new();
+    // Valid YAML but no connection entries.
+    env.write_project_config("connections", "connections:\n");
+
+    let out = env.run(&["list"]);
+    // Must exit 0 — an empty connections block is not an error.
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // No actual connection rows should appear — the output should be empty
+    // or only contain the separator line (no host names, no auth types).
+    assert!(
+        !stdout.contains("password") && !stdout.contains("key"),
+        "expected no connection rows for empty connections block, got: {stdout}"
+    );
+}
+
 // ─── Config priority scenario ─────────────────────────────────────────────────
 
 #[test]

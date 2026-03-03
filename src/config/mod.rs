@@ -45,14 +45,20 @@ fn default_pull() -> String {
 
 #[derive(Deserialize, Clone, Debug)]
 struct RawConn {
-    host: String,
-    user: String,
+    /// Required fields are `Option` so we can emit a clear error naming the
+    /// missing field instead of the opaque serde_yaml "missing field" message.
+    #[serde(default)]
+    host: Option<String>,
+    #[serde(default)]
+    user: Option<String>,
     #[serde(default = "default_port")]
     port: u16,
-    auth: String,
+    #[serde(default)]
+    auth: Option<String>,
     #[serde(default)]
     key: Option<String>,
-    description: String,
+    #[serde(default)]
+    description: Option<String>,
     #[serde(default)]
     link: Option<String>,
     /// Optional inline group tag. Connections without a `group:` field belong
@@ -356,6 +362,28 @@ pub(crate) fn load_impl(
 
 // ─── Layer loading ────────────────────────────────────────────────────────────
 
+/// Validate that every connection entry in `connections` has all required
+/// fields present. Returns a clear error naming the config file, the
+/// connection entry, and the first missing required field.
+fn validate_connections(path: &Path, connections: &HashMap<String, RawConn>) -> Result<()> {
+    for (name, raw) in connections {
+        let file = path.display();
+        if raw.host.is_none() {
+            anyhow::bail!("{file}: connection '{name}' is missing required field 'host'");
+        }
+        if raw.user.is_none() {
+            anyhow::bail!("{file}: connection '{name}' is missing required field 'user'");
+        }
+        if raw.auth.is_none() {
+            anyhow::bail!("{file}: connection '{name}' is missing required field 'auth'");
+        }
+        if raw.description.is_none() {
+            anyhow::bail!("{file}: connection '{name}' is missing required field 'description'");
+        }
+    }
+    Ok(())
+}
+
 struct LayerData {
     found: bool,
     count: usize,
@@ -397,7 +425,11 @@ fn load_layer(
     }
 
     let raw: RawFile = serde_yaml::from_str(&content)
-        .with_context(|| format!("failed to parse {}", path.display()))?;
+        .with_context(|| format!("failed to parse {}: invalid YAML syntax", path.display()))?;
+
+    // Validate required connection fields — emit clear errors naming the file,
+    // connection entry, and the missing field rather than opaque serde messages.
+    validate_connections(path, &raw.connections)?;
 
     let docker_present = raw.docker.is_some();
     // User-layer docker is suppressed (caller emits the warning).
@@ -519,14 +551,16 @@ fn build_connection(
     path: &Path,
     shadowed: bool,
 ) -> Connection {
+    // SAFETY: validate_connections() is called before build_connection() in
+    // load_layer(), so all required Option fields are guaranteed to be Some.
     Connection {
         name: name.to_string(),
-        host: raw.host.clone(),
-        user: raw.user.clone(),
+        host: raw.host.clone().unwrap_or_default(),
+        user: raw.user.clone().unwrap_or_default(),
         port: raw.port,
-        auth: raw.auth.clone(),
+        auth: raw.auth.clone().unwrap_or_default(),
         key: raw.key.clone(),
-        description: raw.description.clone(),
+        description: raw.description.clone().unwrap_or_default(),
         link: raw.link.clone(),
         group: raw.group.clone(),
         layer,
