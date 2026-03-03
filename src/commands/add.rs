@@ -177,21 +177,21 @@ fn build_entry(
     link: Option<&str>,
 ) -> String {
     let mut s = String::new();
-    s.push_str(&format!("  host: {}\n", host));
-    s.push_str(&format!("  user: {}\n", user));
+    s.push_str(&format!("    host: {}\n", host));
+    s.push_str(&format!("    user: {}\n", user));
     if port != 22 {
-        s.push_str(&format!("  port: {}\n", port));
+        s.push_str(&format!("    port: {}\n", port));
     }
-    s.push_str(&format!("  auth: {}\n", auth));
+    s.push_str(&format!("    auth: {}\n", auth));
     if let Some(k) = key {
-        s.push_str(&format!("  key: {}\n", k));
+        s.push_str(&format!("    key: {}\n", k));
     }
     s.push_str(&format!(
-        "  description: \"{}\"\n",
+        "    description: \"{}\"\n",
         description.replace('"', "\\\"")
     ));
     if let Some(l) = link {
-        s.push_str(&format!("  link: {}\n", l));
+        s.push_str(&format!("    link: {}\n", l));
     }
     s
 }
@@ -470,7 +470,7 @@ mod tests {
     #[test]
     fn test_insert_connection_appends_under_existing_connections_key() {
         let content = "version: 1\n\nconnections:\n  a:\n    host: h\n";
-        let entry = "  host: newhost\n  user: u\n  auth: key\n  description: \"d\"\n";
+        let entry = "    host: newhost\n    user: u\n    auth: key\n    description: \"d\"\n";
         let result = insert_connection(content, "b", entry);
         assert!(result.contains("a:"));
         assert!(result.contains("b:"));
@@ -480,7 +480,7 @@ mod tests {
     #[test]
     fn test_insert_connection_adds_connections_section_when_missing() {
         let content = "version: 1\n";
-        let entry = "  host: h\n  user: u\n  auth: key\n  description: \"d\"\n";
+        let entry = "    host: h\n    user: u\n    auth: key\n    description: \"d\"\n";
         let result = insert_connection(content, "srv", entry);
         assert!(result.contains("connections:"));
         assert!(result.contains("srv:"));
