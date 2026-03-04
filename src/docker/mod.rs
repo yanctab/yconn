@@ -76,7 +76,15 @@ pub fn exec(
 
 /// Container detection with an injectable `dockerenv` path for testing.
 fn detect_container(dockerenv_path: &Path) -> bool {
-    dockerenv_path.exists() || std::env::var("CONN_IN_DOCKER").as_deref() == Ok("1")
+    detect_container_impl(
+        dockerenv_path,
+        std::env::var("CONN_IN_DOCKER").ok().as_deref(),
+    )
+}
+
+/// Pure container detection — all inputs injected so tests need no env mutation.
+fn detect_container_impl(dockerenv_path: &Path, conn_in_docker: Option<&str>) -> bool {
+    dockerenv_path.exists() || conn_in_docker == Some("1")
 }
 
 /// Core `docker run` argv construction with all paths injected for testing.
@@ -242,10 +250,7 @@ mod tests {
     fn test_in_container_via_env_var() {
         let dir = TempDir::new().unwrap();
         let absent = dir.path().join("no-dockerenv");
-        std::env::set_var("CONN_IN_DOCKER", "1");
-        let result = detect_container(&absent);
-        std::env::remove_var("CONN_IN_DOCKER");
-        assert!(result);
+        assert!(detect_container_impl(&absent, Some("1")));
     }
 
     // ── Scenario 3: inside container via file → detected ─────────────────────
@@ -262,8 +267,7 @@ mod tests {
     fn test_not_in_container() {
         let dir = TempDir::new().unwrap();
         let absent = dir.path().join("no-dockerenv");
-        std::env::remove_var("CONN_IN_DOCKER");
-        assert!(!detect_container(&absent));
+        assert!(!detect_container_impl(&absent, None));
     }
 
     // ── Scenario 4: pull: always → --pull always included ────────────────────
