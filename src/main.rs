@@ -18,12 +18,12 @@ fn main() -> Result<()> {
     // Save Copy flags before cli.command is moved in the match below.
     let all = cli.all;
     let verbose = cli.verbose;
-    let renderer = display::Renderer::new(!cli.no_color);
+    let renderer = display::Renderer::new(true);
 
     match cli.command {
-        Commands::List => {
+        Commands::List { group } => {
             let cfg = load_and_warn(&renderer, verbose)?;
-            commands::list::run(&cfg, &renderer, all)
+            commands::list::run(&cfg, &renderer, all, group.as_deref())
         }
         Commands::Show { name } => {
             let cfg = load_and_warn(&renderer, verbose)?;
@@ -52,14 +52,14 @@ fn main() -> Result<()> {
             let cfg = load_and_warn(&renderer, verbose)?;
             commands::connect::run(&cfg, &renderer, &name, verbose)
         }
-        Commands::Add => commands::add::run(cli.layer),
-        Commands::Edit { name } => {
+        Commands::Add { layer } => commands::add::run(layer),
+        Commands::Edit { name, layer } => {
             let cfg = load_and_warn(&renderer, verbose)?;
-            commands::edit::run(&cfg, &name, cli.layer)
+            commands::edit::run(&cfg, &name, layer)
         }
-        Commands::Remove { name } => {
+        Commands::Remove { name, layer } => {
             let cfg = load_and_warn(&renderer, verbose)?;
-            commands::remove::run(&cfg, &renderer, &name, cli.layer)
+            commands::remove::run(&cfg, &renderer, &name, layer)
         }
         Commands::Init { location } => commands::init::run(location),
     }

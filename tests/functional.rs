@@ -68,7 +68,7 @@ impl TestEnv {
         path.to_string_lossy().into_owned()
     }
 
-    /// Run yconn with a controlled environment. `--no-color` is always prepended.
+    /// Run yconn with a controlled environment.
     fn run(&self, args: &[&str]) -> Output {
         let path = format!(
             "{}:{}",
@@ -76,7 +76,6 @@ impl TestEnv {
             std::env::var("PATH").unwrap_or_default()
         );
         std::process::Command::new(env!("CARGO_BIN_EXE_yconn"))
-            .arg("--no-color")
             .args(args)
             .env("PATH", path)
             .env("XDG_CONFIG_HOME", self.xdg_config.path())
@@ -95,7 +94,6 @@ impl TestEnv {
             std::env::var("PATH").unwrap_or_default()
         );
         std::process::Command::new(env!("CARGO_BIN_EXE_yconn"))
-            .arg("--no-color")
             .args(args)
             .env("PATH", path)
             .env("XDG_CONFIG_HOME", self.xdg_config.path())
@@ -114,7 +112,6 @@ impl TestEnv {
             std::env::var("PATH").unwrap_or_default()
         );
         let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_yconn"))
-            .arg("--no-color")
             .args(args)
             .env("PATH", path)
             .env("XDG_CONFIG_HOME", self.xdg_config.path())
@@ -554,7 +551,6 @@ fn edit_invokes_editor_with_correct_file_path() {
         std::env::var("PATH").unwrap_or_default()
     );
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_yconn"))
-        .arg("--no-color")
         .args(["edit", "my-srv"])
         .env("PATH", path)
         .env("XDG_CONFIG_HOME", env.xdg_config.path())

@@ -2,32 +2,35 @@
 
 use anyhow::Result;
 
-use crate::config::LoadedConfig;
+use crate::config::{Connection, LoadedConfig};
 use crate::display::{ConnectionRow, Renderer};
 
-pub fn run(cfg: &LoadedConfig, renderer: &Renderer, all: bool) -> Result<()> {
-    let connections = if all {
-        &cfg.all_connections
+pub fn run(cfg: &LoadedConfig, renderer: &Renderer, all: bool, group: Option<&str>) -> Result<()> {
+    let rows: Vec<ConnectionRow> = if all {
+        cfg.all_connections.iter().map(conn_to_row).collect()
     } else {
-        &cfg.connections
+        let filter = cfg.effective_group_filter(all, group);
+        cfg.filtered_connections(filter)
+            .iter()
+            .map(|c| conn_to_row(c))
+            .collect()
     };
-
-    let rows: Vec<ConnectionRow> = connections
-        .iter()
-        .map(|c| ConnectionRow {
-            name: c.name.clone(),
-            host: c.host.clone(),
-            user: c.user.clone(),
-            port: c.port,
-            auth: c.auth.clone(),
-            source: c.layer.label().to_string(),
-            description: c.description.clone(),
-            shadowed: c.shadowed,
-        })
-        .collect();
 
     renderer.list(&rows);
     Ok(())
+}
+
+fn conn_to_row(c: &Connection) -> ConnectionRow {
+    ConnectionRow {
+        name: c.name.clone(),
+        host: c.host.clone(),
+        user: c.user.clone(),
+        port: c.port,
+        auth: c.auth.clone(),
+        source: c.layer.label().to_string(),
+        description: c.description.clone(),
+        shadowed: c.shadowed,
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -48,6 +51,12 @@ mod tests {
     fn simple_conn(name: &str, host: &str) -> String {
         format!(
             "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth: key\n    description: desc\n"
+        )
+    }
+
+    fn conn_with_group(name: &str, host: &str, group: &str) -> String {
+        format!(
+            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth: key\n    description: desc\n    group: {group}\n"
         )
     }
 
@@ -73,7 +82,7 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
         assert_eq!(cfg.connections.len(), 1);
-        run(&cfg, &no_color(), false).unwrap();
+        run(&cfg, &no_color(), false, None).unwrap();
     }
 
     #[test]
@@ -82,7 +91,7 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), None, empty.path());
         assert_eq!(cfg.connections.len(), 0);
-        run(&cfg, &no_color(), false).unwrap();
+        run(&cfg, &no_color(), false, None).unwrap();
     }
 
     #[test]
@@ -108,7 +117,7 @@ mod tests {
         assert_eq!(cfg.all_connections.len(), 2);
 
         // --all includes the shadowed entry
-        run(&cfg, &no_color(), true).unwrap();
+        run(&cfg, &no_color(), true, None).unwrap();
     }
 
     #[test]
@@ -131,7 +140,7 @@ mod tests {
 
         let cfg = load(root.path(), None, sys.path());
         // Without --all, only 1 active connection exposed
-        run(&cfg, &no_color(), false).unwrap();
+        run(&cfg, &no_color(), false, None).unwrap();
         assert_eq!(cfg.connections.len(), 1);
         assert!(!cfg.connections[0].shadowed);
     }
@@ -163,6 +172,80 @@ mod tests {
 
         let cfg = load(root.path(), Some(user.path()), sys.path());
         assert_eq!(cfg.connections.len(), 3);
-        run(&cfg, &no_color(), false).unwrap();
+        run(&cfg, &no_color(), false, None).unwrap();
+    }
+
+    // ─── --group filter tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_list_group_filter_returns_only_matching_connections() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        // Two connections: one tagged "work", one tagged "private".
+        let yaml = format!(
+            "{}\n{}",
+            conn_with_group("work-srv", "10.0.0.1", "work"),
+            conn_with_group("private-srv", "10.0.0.2", "private").replace("connections:\n", "")
+        );
+        write_yaml(&yconn, "connections.yaml", &yaml);
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        assert_eq!(cfg.connections.len(), 2);
+
+        // Only the "work" connection should appear when filtering by "work".
+        let filter = cfg.effective_group_filter(false, Some("work"));
+        let filtered = cfg.filtered_connections(filter);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].name, "work-srv");
+
+        // run() should not error.
+        run(&cfg, &no_color(), false, Some("work")).unwrap();
+    }
+
+    #[test]
+    fn test_list_group_with_all_shows_all_connections() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        let yaml = format!(
+            "{}\n{}",
+            conn_with_group("work-srv", "10.0.0.1", "work"),
+            conn_with_group("private-srv", "10.0.0.2", "private").replace("connections:\n", "")
+        );
+        write_yaml(&yconn, "connections.yaml", &yaml);
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+
+        // --all overrides any group filter — effective_group_filter returns None.
+        let filter = cfg.effective_group_filter(true, Some("work"));
+        assert!(filter.is_none());
+
+        // run() with all=true shows both connections.
+        run(&cfg, &no_color(), true, Some("work")).unwrap();
+    }
+
+    #[test]
+    fn test_list_group_with_no_matches_returns_empty_list() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            &conn_with_group("work-srv", "10.0.0.1", "work"),
+        );
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+
+        // Filtering by an unknown group should return empty — no error.
+        let filter = cfg.effective_group_filter(false, Some("unknown"));
+        let filtered = cfg.filtered_connections(filter);
+        assert_eq!(filtered.len(), 0);
+
+        run(&cfg, &no_color(), false, Some("unknown")).unwrap();
     }
 }
