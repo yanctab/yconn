@@ -22,7 +22,6 @@ pub fn run(cfg: &LoadedConfig, renderer: &Renderer, all: bool) -> Result<()> {
             auth: c.auth.clone(),
             source: c.layer.label().to_string(),
             description: c.description.clone(),
-            link: c.link.clone(),
             shadowed: c.shadowed,
         })
         .collect();
