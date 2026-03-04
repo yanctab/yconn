@@ -25,17 +25,9 @@ pub enum LayerArg {
 #[derive(Debug, Parser)]
 #[command(name = "yconn", version, about)]
 pub struct Cli {
-    /// Target a specific config layer for add / edit / remove
-    #[arg(long, global = true, value_name = "LAYER")]
-    pub layer: Option<LayerArg>,
-
     /// Include shadowed entries in list output
     #[arg(long, global = true)]
     pub all: bool,
-
-    /// Disable coloured output
-    #[arg(long, global = true)]
-    pub no_color: bool,
 
     /// Print config loading decisions, merge resolution, and full Docker invocation
     #[arg(long, global = true)]
@@ -63,7 +55,11 @@ pub enum InitLocation {
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// List all connections across all layers
-    List,
+    List {
+        /// Filter output to connections whose group field equals NAME
+        #[arg(long, value_name = "NAME")]
+        group: Option<String>,
+    },
 
     /// Connect to a named host
     Connect {
@@ -78,18 +74,28 @@ pub enum Commands {
     },
 
     /// Interactive wizard to add a connection to a chosen layer
-    Add,
+    Add {
+        /// Target a specific config layer
+        #[arg(long, value_name = "LAYER")]
+        layer: Option<LayerArg>,
+    },
 
     /// Open the connection's source config file in $EDITOR
     Edit {
         /// Name of the connection to edit
         name: String,
+        /// Target a specific config layer
+        #[arg(long, value_name = "LAYER")]
+        layer: Option<LayerArg>,
     },
 
     /// Remove a connection (prompts for layer if ambiguous)
     Remove {
         /// Name of the connection to remove
         name: String,
+        /// Target a specific config layer
+        #[arg(long, value_name = "LAYER")]
+        layer: Option<LayerArg>,
     },
 
     /// Scaffold a connections.yaml in the current directory
