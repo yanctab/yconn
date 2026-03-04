@@ -236,20 +236,13 @@ RUN chmod 600 /keys/prod_deploy_key /keys/bastion_key
 
 ---
 
-## Multi-group setup
+## Inline group field usage
 
 **When to use:** You have logically separate sets of connections — for example `work` and
-`private` — and want to switch between them cleanly without mixing entries in one file.
+`private` — and want to switch between them cleanly. All connections live in one
+`connections.yaml` file; a `group:` field on each entry determines which set it belongs to.
 
-**File layout:**
-
-```
-~/.config/yconn/
-├── work.yaml
-└── private.yaml
-```
-
-**`~/.config/yconn/work.yaml`**
+**`~/.config/yconn/connections.yaml`**
 
 ```yaml
 version: 1
@@ -261,26 +254,22 @@ connections:
     auth: key
     key: ~/.ssh/work_key
     description: "Work production web server"
+    group: work
 
   work-db:
     host: 10.10.0.10
     user: dbadmin
     auth: password
     description: "Work database server"
-```
+    group: work
 
-**`~/.config/yconn/private.yaml`**
-
-```yaml
-version: 1
-
-connections:
   home-server:
     host: 192.168.1.100
     user: mans
     auth: key
     key: ~/.ssh/id_ed25519
     description: "Home server"
+    group: private
 
   vps:
     host: vps.example.com
@@ -288,18 +277,22 @@ connections:
     auth: key
     key: ~/.ssh/vps_key
     description: "Personal VPS"
+    group: private
 ```
 
 **Commands:**
 
 ```bash
-# List all available groups across all layers
+# List all available group values found across connections
 yconn group list
 
-# Switch to the work group
+# Show all connections (no group filter)
+yconn list
+
+# Switch to the work group — subsequent list/connect only shows work connections
 yconn group use work
 
-# List connections — now shows work.yaml entries
+# List only work connections
 yconn list
 
 # Connect to a work server
@@ -308,31 +301,176 @@ yconn connect work-web
 # Switch to the private group
 yconn group use private
 
-# List connections — now shows private.yaml entries
+# List only private connections
 yconn list
 
 # Connect to the home server
 yconn connect home-server
 
-# Check which group is currently active and which files are loaded
+# Show connections from a specific group without changing the active group
+yconn list --group work
+
+# Show all connections regardless of active group
+yconn list --all
+
+# Check which group is currently active
 yconn group current
 
-# Revert to the default group (connections.yaml)
+# Revert to no group filter (show all connections)
 yconn group clear
 ```
 
 **Notes:**
 
+- All connections live in `connections.yaml`. The `group:` field is just a tag — no
+  separate files per group.
 - The active group is stored in `~/.config/yconn/session.yml` and persists across
   terminal sessions until changed.
-- Each group is independent — switching groups changes which `.yaml` file is loaded
-  from every layer. A group with no file in a given layer simply skips that layer.
-- Groups can also be used at the project layer. For example, a repo with both
-  `.yconn/work.yaml` and a team member's user-level `~/.config/yconn/work.yaml`
-  will merge the two when the `work` group is active, with the project layer winning
-  on any name collision.
-- `yconn group use <name>` warns if no config file for that group exists in any layer,
-  but it still sets the group so you can follow up by creating the file with `yconn init`.
+- Connections without a `group:` field are always shown when no group filter is active.
+  When a group is locked, only tagged connections matching the group are shown.
+- `yconn list --all` always overrides any group filter and shows every connection.
+- `yconn group use <name>` warns if no connections with that group value exist in any
+  layer, but it still sets the group.
+
+---
+
+## Wildcard pattern usage
+
+**When to use:** You manage many similarly-named hosts (e.g. a fleet of web servers) and
+want a single connection entry to cover all of them, using the input hostname directly.
+
+**`.yconn/connections.yaml`**
+
+```yaml
+version: 1
+
+connections:
+  web-prod-*:
+    host: ""          # ignored — the matched input becomes the SSH hostname
+    user: deploy
+    auth: key
+    key: ~/.ssh/web_prod_key
+    description: "Production web fleet (web-prod-01, web-prod-02, ...)"
+
+  db-staging-?:
+    host: ""          # ignored — the matched input becomes the SSH hostname
+    user: dbadmin
+    auth: key
+    key: ~/.ssh/db_staging_key
+    description: "Staging database servers (db-staging-a, db-staging-b, ...)"
+
+  bastion:
+    host: bastion.example.com
+    user: ec2-user
+    port: 2222
+    auth: key
+    key: ~/.ssh/bastion_key
+    description: "Bastion host (exact match — takes priority over any pattern)"
+```
+
+**Commands:**
+
+```bash
+# Connect to web-prod-01 — matches web-prod-* pattern; input becomes the SSH hostname
+yconn connect web-prod-01
+
+# Connect to web-prod-07 — same pattern, different host
+yconn connect web-prod-07
+
+# Connect to db-staging-a — matches db-staging-? pattern
+yconn connect db-staging-a
+
+# Connect to bastion — exact match wins over any wildcard pattern
+yconn connect bastion
+
+# Show which pattern covers a given input (shows pattern name in source field)
+yconn show web-prod-01
+```
+
+**How wildcard matching works:**
+
+1. yconn first checks whether the input is an exact connection name. If found, it wins
+   immediately — no pattern check is done.
+2. All connection names are tested as glob patterns against the input. `*` matches any
+   sequence of characters; `?` matches any single character.
+3. The matched input string (`web-prod-01`) becomes the SSH hostname directly. The
+   `host:` field in the YAML entry is overridden by the matched input.
+4. If two different patterns both match the same input (e.g. `web-*` and `web-prod-*`
+   both match `web-prod-01`), yconn exits with a conflict error naming each pattern
+   and its source file. Resolve this by making your patterns non-overlapping.
+
+**Notes:**
+
+- The `host:` field in wildcard entries is overridden at connect time. You can leave it
+  blank or set it to a placeholder value — it will not be used for SSH.
+- Wildcard entries appear in `yconn list` with their pattern name (e.g. `web-prod-*`) in
+  the NAME column.
+- Same-pattern names across layers follow normal priority rules (higher layer wins) and
+  do not trigger conflict detection.
+
+---
+
+## Multi-location init
+
+**When to use:** You want to scaffold a `connections.yaml` at a specific location to match
+your project conventions — the default `.yconn/` subdirectory, a dotfile, or a plain file.
+
+The three `--location` values and their resulting paths:
+
+| `--location` value | Resulting file path | Notes |
+|---|---|---|
+| `yconn` (default) | `.yconn/connections.yaml` | Isolated in subdirectory; git-trackable; recommended |
+| `dotfile` | `.connections.yaml` | Hidden file in project root |
+| `plain` | `connections.yaml` | Plain file in project root; may conflict with other tools |
+
+**Commands:**
+
+```bash
+# Default — creates .yconn/connections.yaml
+yconn init
+
+# Dotfile convention — creates .connections.yaml in the current directory
+yconn init --location dotfile
+
+# Plain — creates connections.yaml in the current directory
+yconn init --location plain
+```
+
+**Resulting file trees:**
+
+```
+# yconn init (default)
+your-project/
+└── .yconn/
+    └── connections.yaml
+
+# yconn init --location dotfile
+your-project/
+└── .connections.yaml
+
+# yconn init --location plain
+your-project/
+└── connections.yaml
+```
+
+**Upward walk priority:**
+
+When yconn searches upward from the working directory, it checks all three conventions
+in each directory in this order:
+
+1. `.yconn/connections.yaml`
+2. `.connections.yaml`
+3. `connections.yaml`
+
+The first match in a given directory wins. The walk then moves up to the parent
+directory and checks again.
+
+**Notes:**
+
+- All three conventions are recognised by the upward walk — you can mix conventions
+  across different projects.
+- `yconn init` fails with a clear error if the target file already exists.
+- After running `yconn init`, edit the scaffolded file and run `yconn list` to verify.
 
 ---
 

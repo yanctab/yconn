@@ -15,15 +15,22 @@ It uses a layered config system inspired by git and ssh, supports key-based and
 password-based auth, and is designed to be shareable in DevOps environments
 without ever exposing credentials.
 
-Connections are defined in YAML files and loaded from up to three layers:
+Connections are defined in `connections.yaml` files and loaded from up to three
+layers:
 
-- **project** — `.yconn/<group>.yaml`, discovered by walking up from the current
-  directory (like git); lives in version control
-- **user** — `~/.config/yconn/<group>.yaml`; private to the local user
-- **system** — `/etc/yconn/<group>.yaml`; org-wide defaults managed by sysadmins
+- **project** — `connections.yaml` (or `.connections.yaml` / `.yconn/connections.yaml`),
+  discovered by walking up from the current directory (like git); lives in version
+  control
+- **user** — `~/.config/yconn/connections.yaml`; private to the local user
+- **system** — `/etc/yconn/connections.yaml`; org-wide defaults managed by sysadmins
 
-Higher-priority layers win on name collision. A layer that has no file for the
-active group is silently skipped.
+Higher-priority layers win on name collision. A layer that has no `connections.yaml`
+is silently skipped.
+
+Connection names may contain glob wildcards (`*`, `?`). When a wildcard pattern is
+used, the matched input becomes the SSH hostname directly (the pattern IS the host
+template). Exact name matches always win over wildcard patterns. If two different
+patterns both match the same input, yconn exits with a conflict error.
 
 When a **docker** block is present in the project or system config, yconn
 re-invokes itself inside a container before doing anything else. This allows SSH
@@ -35,10 +42,13 @@ keys to be pre-baked into an image rather than distributed to developer machines
 : List all connections across all active config layers. Connections from
   higher-priority layers that shadow lower-priority ones are shown once.
   Use **--all** to also show shadowed entries.
+  Use **--group** *NAME* to filter to connections whose `group:` field equals *NAME*.
 
 **connect** *NAME*
 : Connect to the named host by invoking SSH. Replaces the current process so
-  terminal behavior (TTY, signals) works correctly.
+  terminal behavior (TTY, signals) works correctly. *NAME* is matched first as
+  an exact connection name, then against wildcard patterns. When a wildcard
+  pattern matches, the input string is used directly as the SSH hostname.
 
 **show** *NAME*
 : Print the resolved config for a connection. Credentials (key paths) are shown
@@ -46,42 +56,50 @@ keys to be pre-baked into an image rather than distributed to developer machines
 
 **add**
 : Interactive wizard that prompts for connection details and writes the entry to
-  a chosen layer.
+  a chosen layer. Use **--layer** to target a specific layer.
 
 **edit** *NAME*
 : Open the source config file that defines *NAME* in **$EDITOR**.
+  Use **--layer** to target a specific layer.
 
 **remove** *NAME*
 : Remove a connection. Prompts for which layer to target if the name exists in
-  more than one layer.
+  more than one layer. Use **--layer** to target a specific layer.
 
 **init**
-: Scaffold a `<group>.yaml` file in `.yconn/` in the current directory.
+: Scaffold a `connections.yaml` in the current directory. The **--location** flag
+  controls where the file is placed:
+
+  - **yconn** (default) — creates `.yconn/connections.yaml`; recommended for
+    git-tracked project configs
+  - **dotfile** — creates `.connections.yaml` in the current directory
+  - **plain** — creates `connections.yaml` in the current directory (may conflict
+    with other tools)
+
+  Fails with a clear error if the target file already exists.
 
 **config**
 : Show which config files are active, their paths, connection counts, and Docker
   bootstrap status.
 
 **group list**
-: Show all groups discovered across all layers and which layers contain them.
+: Show all unique group values found across connection entries in all loaded
+  layers, and which layers contain connections with each group tag.
 
 **group use** *NAME*
 : Set *NAME* as the active group. Writes to `~/.config/yconn/session.yml`.
-  A warning is emitted if no config file for that group exists in any layer, but
-  the group is still set.
+  A warning is emitted if no connections with that group value exist in any layer,
+  but the group is still set.
 
 **group clear**
-: Remove `active_group` from `session.yml`, reverting to the default group
-  (`connections`).
+: Remove `active_group` from `session.yml`, reverting to the default (no group
+  filter — all connections shown).
 
 **group current**
 : Print the active group name and the resolved config file paths for each layer,
   indicating which files were found.
 
 # OPTIONS
-
-**--layer** *system*|*user*|*project*
-: Target a specific config layer for **add**, **edit**, and **remove**.
 
 **--all**
 : Include shadowed entries in the output of **yconn list**.
@@ -90,14 +108,14 @@ keys to be pre-baked into an image rather than distributed to developer machines
 : Print config loading decisions, merge resolution, and the full Docker
   invocation command before it is executed.
 
-**--no-color**
-: Disable colored output. Automatically applied when stdout is not a terminal.
-
 **--help**
 : Print help and exit.
 
 **--version**
 : Print version and exit.
+
+The **--layer** *system*|*user*|*project* flag applies only to **add**, **edit**,
+and **remove** — it is a per-subcommand flag, not a global option.
 
 # CONFIGURATION
 
@@ -123,8 +141,24 @@ connections:
     auth: key         # "key" | "password"
     key: ~/.ssh/prod_deploy_key
     description: "Primary production web server"
+    group: work       # optional inline group tag
     link: https://wiki.internal/servers/prod-web
+
+  web-*:
+    host: ""          # ignored for wildcard entries — input IS the host
+    user: deploy
+    auth: key
+    key: ~/.ssh/web_key
+    description: "Any web server matching web-*"
 ```
+
+## Wildcard patterns
+
+Connection names may use `*` (any sequence) and `?` (any single character).
+When a wildcard pattern matches the input to **yconn connect**, the matched
+input string becomes the SSH hostname — no substitution occurs. Two different
+patterns matching the same input is a conflict and causes yconn to exit
+non-zero with a clear error.
 
 ## Session file
 
@@ -134,8 +168,8 @@ The active group is persisted to `~/.config/yconn/session.yml`:
 active_group: work
 ```
 
-An absent or empty session file is valid — the default group `connections` is
-used. Unknown keys are ignored for forward compatibility.
+An absent or empty session file is valid — no group filter is applied and all
+connections are shown. Unknown keys are ignored for forward compatibility.
 
 ## Docker bootstrap
 
@@ -158,10 +192,22 @@ List connections from all layers:
 yconn list
 ```
 
+Filter connections by group:
+
+```
+yconn list --group work
+```
+
 Connect to a host:
 
 ```
 yconn connect prod-web
+```
+
+Connect using a wildcard pattern (input becomes the SSH hostname):
+
+```
+yconn connect web-prod-01
 ```
 
 Show all details for a connection (including shadowed):
@@ -196,10 +242,12 @@ Show active config files and Docker status:
 yconn config
 ```
 
-Scaffold a project config for the current group:
+Scaffold a project config at different locations:
 
 ```
-yconn init
+yconn init                        # creates .yconn/connections.yaml (default)
+yconn init --location dotfile     # creates .connections.yaml
+yconn init --location plain       # creates connections.yaml
 ```
 
 # FILES
@@ -207,15 +255,22 @@ yconn init
 `~/.config/yconn/session.yml`
 : User session state — active group.
 
-`~/.config/yconn/<group>.yaml`
+`~/.config/yconn/connections.yaml`
 : User-level connection config. May reference local key paths.
 
-`/etc/yconn/<group>.yaml`
+`/etc/yconn/connections.yaml`
 : System-level connection config. Must not contain credentials.
 
-`.yconn/<group>.yaml`
-: Project-level connection config. Lives in version control. Must not contain
-  credentials.
+`.yconn/connections.yaml`
+: Project-level connection config (default location). Lives in version control.
+  Must not contain credentials.
+
+`.connections.yaml`
+: Project-level connection config (dotfile convention). Found by the upward walk.
+
+`connections.yaml`
+: Project-level connection config (plain convention). Found by the upward walk.
+  May conflict with other tools that use the same filename.
 
 # ENVIRONMENT
 
