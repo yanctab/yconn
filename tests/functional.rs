@@ -189,12 +189,6 @@ fn conn_password(name: &str, host: &str, user: &str, port: Option<u16>) -> Strin
     )
 }
 
-fn conn_key_with_link(name: &str, host: &str, user: &str, key: &str, link: &str) -> String {
-    format!(
-        "connections:\n  {name}:\n    host: {host}\n    user: {user}\n    auth: key\n    key: {key}\n    description: test connection\n    link: {link}\n"
-    )
-}
-
 /// Wrap a connections YAML block in a docker section.
 ///
 /// `connections_yaml` must start with `connections:\n`.
@@ -451,50 +445,6 @@ fn no_docker_block_uses_ssh() {
     assert!(
         !stdout.contains("docker"),
         "expected no 'docker' in stdout when no docker block configured, got: {stdout}"
-    );
-}
-
-// ─── List link column ─────────────────────────────────────────────────────────
-
-#[test]
-fn list_shows_link_column_when_connection_has_link() {
-    let env = TestEnv::new();
-    let key = env.write_key("id_rsa");
-    let link = "https://wiki.internal/servers/prod-web";
-    env.write_user_config(
-        "connections",
-        &conn_key_with_link("prod-web", "10.0.1.50", "deploy", &key, link),
-    );
-
-    let out = env.run(&["list"]);
-    TestEnv::assert_ok(&out);
-
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("LINK"),
-        "expected LINK column header in list output, got: {stdout}"
-    );
-    assert!(
-        stdout.contains(link),
-        "expected link URL '{link}' in list output, got: {stdout}"
-    );
-}
-
-#[test]
-fn list_omits_link_column_when_no_connection_has_link() {
-    let env = TestEnv::new();
-    env.write_user_config(
-        "connections",
-        &conn_password("prod-web", "10.0.1.50", "deploy", None),
-    );
-
-    let out = env.run(&["list"]);
-    TestEnv::assert_ok(&out);
-
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        !stdout.contains("LINK"),
-        "expected no LINK column header when no connection has a link, got: {stdout}"
     );
 }
 

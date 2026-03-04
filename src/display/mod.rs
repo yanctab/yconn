@@ -16,7 +16,6 @@ pub struct ConnectionRow {
     pub auth: String,
     pub source: String,
     pub description: String,
-    pub link: Option<String>,
     pub shadowed: bool,
 }
 
@@ -129,17 +128,6 @@ impl Renderer {
 
     // ── list ─────────────────────────────────────────────────────────────────
 
-    /// Truncate a URL to at most `max` characters, appending `…` if truncated.
-    fn truncate_link(url: &str, max: usize) -> String {
-        if url.len() <= max {
-            url.to_string()
-        } else {
-            // Truncate to max-1 chars and append the ellipsis character.
-            let truncated: String = url.chars().take(max - 1).collect();
-            format!("{truncated}\u{2026}")
-        }
-    }
-
     fn render_list(&self, rows: &[ConnectionRow]) -> String {
         const HEADERS: [&str; 7] = [
             "NAME",
@@ -150,14 +138,9 @@ impl Renderer {
             "SOURCE",
             "DESCRIPTION",
         ];
-        const LINK_HEADER: &str = "LINK";
-        const LINK_MAX: usize = 50;
         const GAP: &str = "   ";
 
-        // Determine whether any row has a link; omit the column entirely if not.
-        let show_link = rows.iter().any(|r| r.link.is_some());
-
-        // Compute column widths (description is last non-link column; not padded).
+        // Compute column widths (description is the last column; not padded).
         let mut col = [
             HEADERS[0].len(),
             HEADERS[1].len(),
@@ -166,7 +149,6 @@ impl Renderer {
             HEADERS[4].len(),
             HEADERS[5].len(),
             0usize, // description — not padded
-            0usize, // link — not padded (it is the last column)
         ];
         for row in rows {
             col[0] = col[0].max(row.name.len());
@@ -178,7 +160,7 @@ impl Renderer {
         }
 
         // Build header row.
-        let mut header_cells: Vec<String> = vec![
+        let header_cells: Vec<String> = vec![
             pad(HEADERS[0], col[0]),
             pad(HEADERS[1], col[1]),
             pad(HEADERS[2], col[2]),
@@ -187,9 +169,6 @@ impl Renderer {
             pad(HEADERS[5], col[5]),
             HEADERS[6].to_string(),
         ];
-        if show_link {
-            header_cells.push(LINK_HEADER.to_string());
-        }
         let header_plain = header_cells.join(GAP);
         let separator: String = "─".repeat(header_plain.len());
 
@@ -205,7 +184,7 @@ impl Renderer {
             } else {
                 row.description.clone()
             };
-            let mut cells: Vec<String> = vec![
+            let cells: Vec<String> = vec![
                 pad(&row.name, col[0]),
                 pad(&row.host, col[1]),
                 pad(&row.user, col[2]),
@@ -214,14 +193,6 @@ impl Renderer {
                 pad(&row.source, col[5]),
                 desc,
             ];
-            if show_link {
-                let link_cell = row
-                    .link
-                    .as_deref()
-                    .map(|u| Self::truncate_link(u, LINK_MAX))
-                    .unwrap_or_default();
-                cells.push(link_cell);
-            }
             let line = cells.join(GAP);
             if row.shadowed {
                 out.push_str(&self.maybe_dim(&line));
@@ -485,7 +456,6 @@ mod tests {
                 auth: "key".into(),
                 source: "project".into(),
                 description: "Primary production web server".into(),
-                link: None,
                 shadowed: false,
             },
             ConnectionRow {
@@ -496,7 +466,6 @@ mod tests {
                 auth: "password".into(),
                 source: "user".into(),
                 description: "Staging database server".into(),
-                link: None,
                 shadowed: false,
             },
         ]
@@ -546,7 +515,6 @@ mod tests {
             auth: "key".into(),
             source: "system".into(),
             description: "Bastion host".into(),
-            link: None,
             shadowed: true,
         });
         let out = r().render_list(&rows);
@@ -558,87 +526,6 @@ mod tests {
     fn test_list_non_shadowed_row_not_tagged() {
         let out = r().render_list(&sample_rows());
         assert!(!out.contains("[shadowed]"));
-    }
-
-    #[test]
-    fn test_list_link_column_present_when_any_row_has_link() {
-        let mut rows = sample_rows();
-        rows[0].link = Some("https://wiki.internal/servers/prod-web".into());
-        let out = r().render_list(&rows);
-        assert!(
-            out.contains("LINK"),
-            "expected LINK header when a row has a link"
-        );
-        assert!(
-            out.contains("https://wiki.internal/servers/prod-web"),
-            "expected link URL in output"
-        );
-    }
-
-    #[test]
-    fn test_list_link_column_absent_when_no_rows_have_link() {
-        let out = r().render_list(&sample_rows());
-        assert!(
-            !out.contains("LINK"),
-            "expected no LINK header when no row has a link"
-        );
-    }
-
-    #[test]
-    fn test_list_link_truncated_when_too_long() {
-        let mut rows = sample_rows();
-        // 60-character URL — exceeds the 50-char limit.
-        let long_url = "https://wiki.internal/servers/this-is-a-very-long-path/extra";
-        rows[0].link = Some(long_url.into());
-        let out = r().render_list(&rows);
-        // The ellipsis character must appear (truncation happened).
-        assert!(
-            out.contains('\u{2026}'),
-            "expected ellipsis for truncated URL in output: {out}"
-        );
-        // The full URL must NOT appear verbatim.
-        assert!(
-            !out.contains(long_url),
-            "expected long URL to be truncated, but found it verbatim: {out}"
-        );
-    }
-
-    #[test]
-    fn test_list_link_not_truncated_when_within_limit() {
-        let mut rows = sample_rows();
-        let short_url = "https://wiki.internal/srv";
-        rows[0].link = Some(short_url.into());
-        let out = r().render_list(&rows);
-        assert!(out.contains(short_url), "short URL should appear verbatim");
-        assert!(
-            !out.contains('\u{2026}'),
-            "no ellipsis expected for short URL"
-        );
-    }
-
-    #[test]
-    fn test_list_link_column_shown_for_shadowed_rows() {
-        let mut rows = sample_rows();
-        rows.push(ConnectionRow {
-            name: "bastion".into(),
-            host: "bastion.example.com".into(),
-            user: "ec2-user".into(),
-            port: 2222,
-            auth: "key".into(),
-            source: "system".into(),
-            description: "Bastion host".into(),
-            link: Some("https://wiki.internal/bastion".into()),
-            shadowed: true,
-        });
-        let out = r().render_list(&rows);
-        assert!(
-            out.contains("LINK"),
-            "expected LINK column when shadowed row has a link"
-        );
-        assert!(
-            out.contains("https://wiki.internal/bastion"),
-            "expected shadowed row's link in output"
-        );
     }
 
     // ── show tests ────────────────────────────────────────────────────────────
