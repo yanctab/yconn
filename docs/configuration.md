@@ -17,29 +17,34 @@ connection with the same name in a lower-priority layer.
 | 2 | user | `~/.config/yconn/connections.yaml` | Private to the local user |
 | 3 (lowest) | system | `/etc/yconn/connections.yaml` | Org-wide defaults, sysadmin-managed |
 
-A layer that has no file for the active group is silently skipped — not all layers need to define
-entries for every group.
+A layer that has no `connections.yaml` file is silently skipped.
 
 ### Project config discovery
 
 The project layer is found by walking upward from the current working directory (like git),
-checking each parent directory for a `.yconn/<group>.yaml`. The walk stops at `$HOME` or the
+checking each parent directory for a project config file. The walk stops at `$HOME` or the
 filesystem root. This means running from deep inside a project tree will find the config at the
 repo root.
 
-### Groups and filenames
+Three filename conventions are checked in each directory, in priority order:
 
-The active group determines which filename is loaded from each layer. The default group is
-`connections`, which maps to `connections.yaml`. Switching to a group named `work` causes
-`work.yaml` to be loaded from each layer instead.
+1. `.yconn/connections.yaml` — recommended; isolated in a subdirectory, git-trackable
+2. `.connections.yaml` — dotfile convention; stays in the project root
+3. `connections.yaml` — plain name; may conflict with other tools
 
-| Active group | File loaded from each layer |
-|---|---|
-| `connections` (default) | `connections.yaml` |
-| `work` | `work.yaml` |
-| `client-acme` | `client-acme.yaml` |
+The first match found in a directory wins; the walk then stops for that directory and moves up.
 
-See `yconn group --help` or [docs/examples.md](examples.md#multi-group-setup) for group commands.
+### Groups
+
+Groups are inline tags on individual connections. Each connection entry can carry an optional
+`group:` field. All connections live in `connections.yaml` regardless of their group.
+
+The active group (set with `yconn group use <name>`) acts as a filter: when a group is locked,
+`yconn list` shows only connections whose `group:` field matches. `yconn list --all` always
+shows all connections regardless of any lock.
+
+See `yconn group --help` or [docs/examples.md](examples.md#inline-group-field-usage) for group
+commands and examples.
 
 ---
 
@@ -67,6 +72,7 @@ connections:
     auth: key
     key: ~/.ssh/prod_deploy_key
     description: "Primary production web server"
+    group: work
     link: https://wiki.internal/servers/prod-web
 
   staging-db:
@@ -74,6 +80,7 @@ connections:
     user: dbadmin
     auth: password
     description: "Staging database server — use with caution"
+    group: work
     link: https://wiki.internal/servers/staging-db
 
   bastion:
@@ -91,16 +98,46 @@ connections:
 
 | Field | Required | Description |
 |---|---|---|
-| `host` | yes | Hostname or IP address |
+| `host` | yes | Hostname or IP address. May contain glob wildcards (`*`, `?`) — see [Wildcard patterns](#wildcard-patterns) below. |
 | `user` | yes | SSH login user |
 | `port` | no | SSH port — defaults to `22` |
 | `auth` | yes | `key` or `password` |
 | `key` | if `auth: key` | Path to private key file. When using Docker, the path is resolved inside the container. |
 | `description` | yes | Human-readable description of the connection |
+| `group` | no | Inline group tag. Used to filter connections with `yconn group use` or `yconn list --group`. |
 | `link` | no | URL for further documentation (wiki, runbook, etc.) |
 
-Each connection entry requires an explicit `host`. There is no pattern or glob matching — every
-host that should be reachable must have its own named entry.
+---
+
+## Wildcard patterns
+
+Connection names (YAML keys in the `connections:` map) can use glob-style wildcards:
+
+- `*` — matches any sequence of characters
+- `?` — matches any single character
+
+```yaml
+connections:
+  web-*:
+    host: ""   # ignored — the matched input IS the hostname
+    user: deploy
+    auth: key
+    key: ~/.ssh/web_key
+    description: "Any web server matching web-*"
+```
+
+When you run `yconn connect web-prod-01`, yconn matches the input against all known
+patterns. The matched input (`web-prod-01`) becomes the SSH hostname directly — there
+is no template substitution.
+
+**Lookup rules:**
+
+1. Exact name match wins immediately. No conflict check is performed.
+2. If no exact match, all wildcard patterns are tested against the input.
+3. Exactly one pattern must match. If two different patterns both match the same input,
+   yconn exits with a conflict error naming each pattern and its source file.
+4. Same-pattern names across layers follow normal priority rules (higher layer wins) and
+   do not trigger conflict detection.
 
 ---
 
@@ -220,7 +257,7 @@ active_group: work
 
 | Key | Description |
 |---|---|
-| `active_group` | The active group name. Omit or leave blank to use the default (`connections`). |
+| `active_group` | The active group name. Omit or leave blank to use the default (show all untagged and tagged connections). |
 
 The file is designed for forward compatibility — unknown keys are ignored rather than causing
 errors. An empty or absent file is valid and treated as all-defaults.
