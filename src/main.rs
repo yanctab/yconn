@@ -10,7 +10,7 @@ mod docker;
 mod group;
 mod security;
 
-use cli::{Cli, Commands, GroupCommands};
+use cli::{Cli, Commands, GroupCommands, SshConfigCommands};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -62,6 +62,14 @@ fn main() -> Result<()> {
             commands::remove::run(&cfg, &renderer, &name, layer)
         }
         Commands::Init { location } => commands::init::run(location),
+        Commands::SshConfig { subcommand } => match subcommand {
+            SshConfigCommands::Generate { dry_run } => {
+                let cfg = load_and_warn(&renderer, verbose)?;
+                let home = dirs::home_dir()
+                    .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?;
+                commands::ssh_config::run_generate(&cfg.connections, &renderer, dry_run, &home)
+            }
+        },
     }
 }
 

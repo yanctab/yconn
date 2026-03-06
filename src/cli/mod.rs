@@ -119,6 +119,22 @@ pub enum Commands {
         #[command(subcommand)]
         subcommand: GroupCommands,
     },
+
+    /// Generate or display an SSH config file from yconn connections
+    SshConfig {
+        #[command(subcommand)]
+        subcommand: SshConfigCommands,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SshConfigCommands {
+    /// Write Host blocks to ~/.ssh/yconn-connections and update ~/.ssh/config
+    Generate {
+        /// Print generated config to stdout without writing any files
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]

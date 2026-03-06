@@ -876,3 +876,94 @@ fn range_conflict_with_glob_exits_nonzero_with_pattern_names_in_stderr() {
         "expected glob pattern named in stderr, got: {stderr}"
     );
 }
+
+// ─── ssh-config generate ──────────────────────────────────────────────────────
+
+/// `yconn ssh-config generate` writes correct Host blocks to
+/// `~/.ssh/yconn-connections` and injects Include into `~/.ssh/config`.
+#[test]
+fn ssh_config_generate_writes_host_blocks_and_include() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  prod-web:\n    host: 10.0.1.50\n    user: deploy\n    auth: key\n    key: ~/.ssh/prod_key\n    description: Production web\n  staging-db:\n    host: staging.internal\n    user: dbadmin\n    port: 2222\n    auth: password\n    description: Staging database\n",
+    );
+
+    let out = env.run(&["ssh-config", "generate"]);
+    TestEnv::assert_ok(&out);
+
+    // yconn-connections file must exist with correct Host blocks.
+    let ssh_dir = env.home.path().join(".ssh");
+    let conn_file = ssh_dir.join("yconn-connections");
+    assert!(conn_file.exists(), "yconn-connections must be created");
+
+    let content = fs::read_to_string(&conn_file).unwrap();
+    assert!(
+        content.contains("Host prod-web\n"),
+        "missing prod-web block"
+    );
+    assert!(content.contains("    HostName 10.0.1.50\n"));
+    assert!(content.contains("    User deploy\n"));
+    assert!(content.contains("    IdentityFile ~/.ssh/prod_key\n"));
+    assert!(
+        !content.contains("    Port 22\n"),
+        "port 22 must be omitted"
+    );
+    assert!(
+        content.contains("Host staging-db\n"),
+        "missing staging-db block"
+    );
+    assert!(
+        content.contains("    Port 2222\n"),
+        "custom port must appear"
+    );
+    assert!(
+        !content.contains("IdentityFile") || content.contains("prod_key"),
+        "staging-db must not have IdentityFile"
+    );
+
+    // ~/.ssh/config must contain the Include line.
+    let config_file = ssh_dir.join("config");
+    assert!(config_file.exists(), "~/.ssh/config must be created");
+    let config = fs::read_to_string(&config_file).unwrap();
+    assert!(
+        config.contains("Include ~/.ssh/yconn-connections"),
+        "config must contain Include line, got: {config}"
+    );
+
+    // Summary line in stdout.
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Wrote 2 Host block(s)"),
+        "expected summary in stdout, got: {stdout}"
+    );
+}
+
+/// `yconn ssh-config generate --dry-run` prints Host blocks to stdout and
+/// does not write any files.
+#[test]
+fn ssh_config_generate_dry_run_prints_to_stdout_no_files_written() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  myhost:\n    host: 192.168.1.1\n    user: admin\n    auth: password\n    description: My host\n",
+    );
+
+    let out = env.run(&["ssh-config", "generate", "--dry-run"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Host myhost"),
+        "expected Host block in stdout, got: {stdout}"
+    );
+
+    // No files must be written.
+    let conn_file = env.home.path().join(".ssh").join("yconn-connections");
+    assert!(
+        !conn_file.exists(),
+        "dry-run must not write yconn-connections"
+    );
+}
