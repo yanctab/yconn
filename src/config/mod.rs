@@ -196,7 +196,7 @@ fn range_matches(conn_name: &str, input: &str) -> bool {
             }
             match input.strip_prefix(prefix) {
                 None => false,
-                Some(suffix) => suffix.parse::<u64>().map_or(false, |n| n >= start && n <= end),
+                Some(suffix) => suffix.parse::<u64>().is_ok_and(|n| n >= start && n <= end),
             }
         }
     }
@@ -1788,7 +1788,10 @@ mod tests {
 
         let err = cfg.find_with_wildcard("server5").unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("server[1..10]"), "must name range pattern: {msg}");
+        assert!(
+            msg.contains("server[1..10]"),
+            "must name range pattern: {msg}"
+        );
         assert!(msg.contains("server*"), "must name glob pattern: {msg}");
     }
 
