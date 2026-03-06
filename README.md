@@ -19,20 +19,6 @@ VERSION=1.2.0
 sudo pacman -U "https://github.com/yanctab/yconn/releases/download/v${VERSION}/yconn-${VERSION}-1-x86_64.pkg.tar.zst"
 ```
 
-Two-step (download first, then install):
-```bash
-VERSION=1.2.0
-wget "https://github.com/yanctab/yconn/releases/download/v${VERSION}/yconn-${VERSION}-1-x86_64.pkg.tar.zst"
-sudo pacman -U "yconn-${VERSION}-1-x86_64.pkg.tar.zst"
-```
-
-Or with curl:
-```bash
-VERSION=1.2.0
-curl -LO "https://github.com/yanctab/yconn/releases/download/v${VERSION}/yconn-${VERSION}-1-x86_64.pkg.tar.zst"
-sudo pacman -U "yconn-${VERSION}-1-x86_64.pkg.tar.zst"
-```
-
 ### Debian / Ubuntu
 
 ```bash
@@ -42,6 +28,7 @@ sudo apt install "./yconn_${VERSION}_amd64.deb"
 ```
 
 ### From source
+
 ```bash
 git clone https://github.com/yanctab/yconn.git
 cd yconn
@@ -51,6 +38,12 @@ sudo make install          # installs to /usr/local/bin/yconn
 ```
 
 The man page is also installed if you have run `make docs` first.
+
+### Cargo
+
+```bash
+cargo install yconn
+```
 
 ## Quick start
 
