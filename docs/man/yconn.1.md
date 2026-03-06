@@ -27,12 +27,13 @@ layers:
 Higher-priority layers win on name collision. A layer that has no `connections.yaml`
 is silently skipped.
 
-Connection names may contain glob wildcards (`*`, `?`). When a wildcard pattern
-matches, the SSH hostname is resolved from the entry's `host:` field: if it contains
-`${name}`, only that token is replaced with the input (e.g. `${name}.corp.com` →
-`web-prod-01.corp.com`); otherwise the entire host field is replaced by the input.
-Exact name matches always win over wildcard patterns. If two different patterns both
-match the same input, yconn exits with a conflict error.
+Connection names may use glob wildcards (`*`, `?`) or a numeric range suffix
+(`[N..M]`, matching any integer in `[N, M]` after the literal prefix). When a
+pattern matches, the SSH hostname is resolved from the entry's `host:` field: if it
+contains `${name}`, only that token is replaced with the input (e.g.
+`${name}.corp.com` → `web-prod-01.corp.com`); otherwise the entire host field is
+replaced by the input. Exact name matches always win over patterns. If two different
+patterns both match the same input, yconn exits with a conflict error.
 
 When a **docker** block is present in the project or system config, yconn
 re-invokes itself inside a container before doing anything else. This allows SSH
@@ -49,7 +50,7 @@ keys to be pre-baked into an image rather than distributed to developer machines
 **connect** *NAME*
 : Connect to the named host by invoking SSH. Replaces the current process so
   terminal behavior (TTY, signals) works correctly. *NAME* is matched first as
-  an exact connection name, then against wildcard patterns. When a wildcard
+  an exact connection name, then against glob and range patterns. When a
   pattern matches, the SSH hostname is derived from the entry's `host:` field:
   if it contains `${name}`, that token is replaced with the input; otherwise
   the input string is used directly as the hostname.
@@ -154,17 +155,26 @@ connections:
     auth: key
     key: ~/.ssh/web_key
     description: "Any web server matching web-*"
+
+  "app[1..20]":
+    host: "${name}.internal"   # app5 → app5.internal
+    user: ops
+    auth: key
+    key: ~/.ssh/ops_key
+    description: "App servers 1 through 20"
 ```
 
-## Wildcard patterns
+## Wildcard and range patterns
 
-Connection names may use `*` (any sequence) and `?` (any single character).
-When a wildcard pattern matches the input to **yconn connect**, the `host:`
-field is resolved: if it contains `${name}`, only that token is replaced with
-the matched input (e.g. `${name}.corp.com` → `web-prod-01.corp.com`);
-otherwise the entire host field is replaced by the input. Two different
-patterns matching the same input is a conflict and causes yconn to exit
-non-zero with a clear error.
+Connection names may use glob wildcards (`*` — any sequence, `?` — any single
+character) or a numeric range suffix (`[N..M]`). A range pattern matches any
+input whose suffix after the literal prefix is an integer in `[N, M]`
+inclusive (e.g. `app[1..20]` matches `app1` through `app20`). Quote range
+keys in YAML: `"app[1..20]"`. When a pattern matches the input to
+**yconn connect**, the `host:` field is resolved: if it contains `${name}`,
+only that token is replaced with the matched input; otherwise the entire host
+field is replaced by the input. Two different patterns matching the same input
+is a conflict and causes yconn to exit non-zero with a clear error.
 
 ## Session file
 

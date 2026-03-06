@@ -821,3 +821,58 @@ fn wildcard_name_template_in_host_expands_to_fqdn() {
         "expected FQDN host, not bare input, got: {stdout}"
     );
 }
+
+// ─── Numeric range pattern matching ───────────────────────────────────────────
+
+/// `yconn connect` with `server[1..10]` pattern and `host: ${name}.corp.com` —
+/// mock ssh receives `deploy@server5.corp.com`.
+#[test]
+fn range_pattern_with_name_template_expands_to_fqdn() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  \"server[1..10]\":\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth: password\n    description: Corp servers\n",
+    );
+
+    let out = env.run_in_container(&["connect", "server5"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("deploy@server5.corp.com"),
+        "expected 'deploy@server5.corp.com' in stdout, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("deploy@server5 ") && !stdout.ends_with("deploy@server5"),
+        "expected FQDN host, not bare input, got: {stdout}"
+    );
+}
+
+/// `yconn connect` with a range and a glob both matching — exits non-zero and
+/// names both patterns in stderr.
+#[test]
+fn range_conflict_with_glob_exits_nonzero_with_pattern_names_in_stderr() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  \"server[1..10]\":\n    host: ph1\n    user: deploy\n    auth: password\n    description: Range pattern\n  server*:\n    host: ph2\n    user: admin\n    auth: password\n    description: Glob pattern\n",
+    );
+
+    let out = env.run_in_container(&["connect", "server5"]);
+    assert!(
+        !out.status.success(),
+        "expected non-zero exit for conflicting patterns, got 0"
+    );
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("server[1..10]"),
+        "expected range pattern named in stderr, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("server*"),
+        "expected glob pattern named in stderr, got: {stderr}"
+    );
+}

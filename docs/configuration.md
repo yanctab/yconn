@@ -111,10 +111,14 @@ connections:
 
 ## Wildcard patterns
 
-Connection names (YAML keys in the `connections:` map) can use glob-style wildcards:
+Connection names (YAML keys in the `connections:` map) can use two kinds of patterns:
 
+**Glob wildcards:**
 - `*` — matches any sequence of characters
 - `?` — matches any single character
+
+**Numeric range** — `[N..M]` at the end of the name:
+- matches any input whose suffix after the literal prefix parses as an integer in `[N, M]` inclusive
 
 ```yaml
 connections:
@@ -124,6 +128,13 @@ connections:
     auth: key
     key: ~/.ssh/web_key
     description: "Any web server matching web-*"
+
+  "server[1..10]":
+    host: "${name}.internal"   # e.g. server5.internal
+    user: ops
+    auth: key
+    key: ~/.ssh/ops_key
+    description: "Servers 1 through 10"
 
   db-*:
     host: "${name}"            # equivalent to omitting the template — input used directly
@@ -144,12 +155,17 @@ patterns. The `host:` field is then resolved:
 
 1. Exact name match wins immediately. No conflict check is performed. The `host:` field
    is used as-is — `${name}` is not expanded for exact matches.
-2. If no exact match, all wildcard patterns are tested against the input.
+2. If no exact match, all glob and range patterns are tested against the input.
 3. Exactly one pattern must match. Its `host:` field is resolved as described above.
-   If two different patterns both match the same input, yconn exits with a conflict error
-   naming each pattern and its source file.
+   If two different patterns (including a glob and a range) both match the same input,
+   yconn exits with a conflict error naming each pattern and its source file.
 4. Same-pattern names across layers follow normal priority rules (higher layer wins) and
    do not trigger conflict detection.
+
+**Range pattern notes:**
+- Quote the YAML key when the name contains `[` to avoid YAML parse issues: `"server[1..10]"`.
+- An empty range (`end < start`) never matches any input.
+- Only a numeric suffix is matched — `server01` matches `server[1..10]` (suffix `01` parses to `1`).
 
 ---
 
