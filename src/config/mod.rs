@@ -157,20 +157,68 @@ pub struct LoadedConfig {
     pub group_from_file: bool,
 }
 
+/// Parse a `[N..M]` numeric range suffix from a connection name.
+///
+/// Returns `(prefix, start, end)` when the name ends with `[N..M]` where
+/// `N` and `M` are unsigned integers. Returns `None` for any other form.
+///
+/// Examples:
+/// - `"server[1..10]"` → `Some(("server", 1, 10))`
+/// - `"web-[01..99]"` → `Some(("web-", 1, 99))`
+/// - `"server*"`      → `None`
+fn parse_range_pattern(name: &str) -> Option<(&str, u64, u64)> {
+    let bracket = name.rfind('[')?;
+    let prefix = &name[..bracket];
+    let rest = &name[bracket + 1..];
+    // `]` must be the very last character.
+    if !rest.ends_with(']') {
+        return None;
+    }
+    let range_str = &rest[..rest.len() - 1];
+    let (start_str, end_str) = range_str.split_once("..")?;
+    let start: u64 = start_str.parse().ok()?;
+    let end: u64 = end_str.parse().ok()?;
+    Some((prefix, start, end))
+}
+
+/// Return `true` if `input` matches the numeric range pattern `conn_name`.
+///
+/// The pattern must have the form `<prefix>[N..M]`. The input must start with
+/// `<prefix>` and the remaining suffix must parse as a `u64` in `[N, M]`
+/// inclusive. Returns `false` for empty ranges (end < start), non-range
+/// names, and inputs whose suffix is not a non-negative integer.
+fn range_matches(conn_name: &str, input: &str) -> bool {
+    match parse_range_pattern(conn_name) {
+        None => false,
+        Some((prefix, start, end)) => {
+            if end < start {
+                return false;
+            }
+            match input.strip_prefix(prefix) {
+                None => false,
+                Some(suffix) => suffix.parse::<u64>().is_ok_and(|n| n >= start && n <= end),
+            }
+        }
+    }
+}
+
 impl LoadedConfig {
     /// Find a connection by name (active connections only).
     pub fn find(&self, name: &str) -> Option<&Connection> {
         self.connections.iter().find(|c| c.name == name)
     }
 
-    /// Find a connection by exact name or by wildcard pattern matching.
+    /// Find a connection by exact name, wildcard pattern, or numeric range pattern.
     ///
     /// Resolution order:
     /// 1. Try an exact name lookup first — an exact match always wins.
-    /// 2. Scan all active (non-shadowed) connections whose names contain `*`
-    ///    or `?` for patterns that match `input` using glob-style matching.
+    /// 2. Scan all active (non-shadowed) connections for patterns that match
+    ///    `input`. Two pattern kinds are recognised:
+    ///    - **Glob** — name contains `*` or `?`; matched with `WildMatch`.
+    ///    - **Range** — name ends with `[N..M]`; matched by numeric suffix.
     /// 3. If exactly one pattern matches, return a clone of that connection
-    ///    with `host` replaced by `input` (the matched input IS the host).
+    ///    with `host` resolved: if it contains `${name}`, only that token is
+    ///    replaced with the input; otherwise the whole field is replaced.
     /// 4. If two or more *different* patterns match, return an error naming
     ///    each conflicting pattern and its source layer/file.
     /// 5. Same-pattern shadowing across layers is handled by the existing
@@ -184,11 +232,16 @@ impl LoadedConfig {
             return Ok(conn.clone());
         }
 
-        // Step 2: scan wildcard patterns in the active (non-shadowed) set.
+        // Step 2: scan glob and range patterns in the active (non-shadowed) set.
         let mut matches: Vec<&Connection> = Vec::new();
         for conn in &self.connections {
-            let is_pattern = conn.name.contains('*') || conn.name.contains('?');
-            if is_pattern && WildMatch::new(&conn.name).matches(input) {
+            let is_glob = conn.name.contains('*') || conn.name.contains('?');
+            let matched = if is_glob {
+                WildMatch::new(&conn.name).matches(input)
+            } else {
+                range_matches(&conn.name, input)
+            };
+            if matched {
                 matches.push(conn);
             }
         }
@@ -223,7 +276,7 @@ impl LoadedConfig {
                     })
                     .collect();
                 Err(anyhow::anyhow!(
-                    "connection name '{}' matches multiple wildcard patterns:\n{}",
+                    "connection name '{}' matches multiple patterns:\n{}",
                     input,
                     conflict_list.join("\n")
                 ))
@@ -1646,5 +1699,159 @@ mod tests {
 
         let conn = cfg.find_with_wildcard("myconn").unwrap();
         assert_eq!(conn.host, "${name}.corp.com");
+    }
+
+    // ─── Numeric range pattern tests ──────────────────────────────────────────
+
+    /// Range matches its lower bound.
+    #[test]
+    fn test_range_matches_lower_bound() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  \"server[1..10]\":\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Range servers\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+
+        let conn = cfg.find_with_wildcard("server1").unwrap();
+        assert_eq!(conn.host, "server1");
+    }
+
+    /// Range matches its upper bound.
+    #[test]
+    fn test_range_matches_upper_bound() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  \"server[1..10]\":\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Range servers\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+
+        let conn = cfg.find_with_wildcard("server10").unwrap();
+        assert_eq!(conn.host, "server10");
+    }
+
+    /// Range matches a midpoint value.
+    #[test]
+    fn test_range_matches_midpoint() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  \"server[1..10]\":\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Range servers\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+
+        let conn = cfg.find_with_wildcard("server5").unwrap();
+        assert_eq!(conn.host, "server5");
+    }
+
+    /// Input outside the range does not match.
+    #[test]
+    fn test_range_outside_range_does_not_match() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  \"server[1..10]\":\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Range servers\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+
+        let err = cfg.find_with_wildcard("server11").unwrap_err();
+        assert!(err.to_string().contains("server11"));
+        let err0 = cfg.find_with_wildcard("server0").unwrap_err();
+        assert!(err0.to_string().contains("server0"));
+    }
+
+    /// Range pattern conflicts with a glob pattern that matches the same input.
+    #[test]
+    fn test_range_conflict_with_glob_pattern() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  \"server[1..10]\":\n    host: ph1\n    user: deploy\n    auth: password\n    description: Range\n  server*:\n    host: ph2\n    user: admin\n    auth: password\n    description: Glob\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+
+        let err = cfg.find_with_wildcard("server5").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("server[1..10]"),
+            "must name range pattern: {msg}"
+        );
+        assert!(msg.contains("server*"), "must name glob pattern: {msg}");
+    }
+
+    /// Exact name beats a matching range pattern.
+    #[test]
+    fn test_range_exact_name_beats_matching_range() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  server5:\n    host: exact-host\n    user: exact-user\n    auth: password\n    description: Exact\n  \"server[1..10]\":\n    host: range-host\n    user: range-user\n    auth: password\n    description: Range\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+
+        let conn = cfg.find_with_wildcard("server5").unwrap();
+        assert_eq!(conn.host, "exact-host");
+        assert_eq!(conn.user, "exact-user");
+    }
+
+    /// Same range pattern in two layers is shadowing, not a conflict.
+    #[test]
+    fn test_range_same_pattern_in_two_layers_is_shadowing_not_conflict() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            "connections:\n  \"server[1..10]\":\n    host: proj-host\n    user: project-user\n    auth: password\n    description: Project range\n",
+        );
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  \"server[1..10]\":\n    host: user-host\n    user: user-user\n    auth: password\n    description: User range\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test(root.path(), Some(user.path()), empty.path());
+
+        // Project layer wins — only one entry in active set, no conflict.
+        let conn = cfg.find_with_wildcard("server5").unwrap();
+        assert_eq!(conn.user, "project-user");
+    }
+
+    /// Range pattern with `${name}` in host expands to the matched input.
+    #[test]
+    fn test_range_with_name_template_expands_host() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  \"server[1..10]\":\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth: password\n    description: Corp servers\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+
+        let conn = cfg.find_with_wildcard("server5").unwrap();
+        assert_eq!(conn.host, "server5.corp.com");
     }
 }

@@ -359,6 +359,13 @@ connections:
     key: ~/.ssh/db_staging_key
     description: "Staging database servers (db-staging-a, db-staging-b, ...)"
 
+  "app[1..20]":
+    host: "${name}.internal"   # app5 → app5.internal
+    user: ops
+    auth: key
+    key: ~/.ssh/ops_key
+    description: "App servers 1 through 20 (app1 … app20)"
+
   bastion:
     host: bastion.example.com
     user: ec2-user
@@ -380,6 +387,9 @@ yconn connect web-prod-07
 # Connect to db-staging-a — matches db-staging-? pattern
 yconn connect db-staging-a
 
+# Connect to app5 — matches app[1..20] range; SSH target is app5.internal
+yconn connect app5
+
 # Connect to bastion — exact match wins over any wildcard pattern
 yconn connect bastion
 
@@ -387,27 +397,31 @@ yconn connect bastion
 yconn show web-prod-01
 ```
 
-**How wildcard matching works:**
+**How pattern matching works:**
 
 1. yconn first checks whether the input is an exact connection name. If found, it wins
    immediately — no pattern check is done.
-2. All connection names are tested as glob patterns against the input. `*` matches any
-   sequence of characters; `?` matches any single character.
+2. All connection names are tested as patterns against the input. Two kinds are supported:
+   - **Glob** — `*` matches any sequence of characters; `?` matches any single character.
+   - **Numeric range** — `[N..M]` at the end of a name matches any input whose suffix after
+     the literal prefix is an integer in `[N, M]` inclusive (e.g. `app[1..20]` matches
+     `app1` through `app20`).
 3. The `host:` field is resolved for the matched entry:
    - If `host` contains `${name}`, only that token is replaced with the matched input.
      `host: ${name}.corp.com` + input `web-prod-01` → SSH target `web-prod-01.corp.com`.
    - If `host` does not contain `${name}`, the entire field is replaced by the matched input
      (legacy behaviour — blank or placeholder hosts still work as before).
-4. If two different patterns both match the same input (e.g. `web-*` and `web-prod-*`
-   both match `web-prod-01`), yconn exits with a conflict error naming each pattern
-   and its source file. Resolve this by making your patterns non-overlapping.
+4. If two different patterns both match the same input (including a glob and a range),
+   yconn exits with a conflict error naming each pattern and its source file. Resolve this
+   by making your patterns non-overlapping.
 
 **Notes:**
 
 - Use `host: "${name}.corp.com"` to append a domain suffix to every matched input.
 - Use `host: "${name}"` or leave host blank/placeholder for bare-hostname behaviour.
-- Wildcard entries appear in `yconn list` with their pattern name (e.g. `web-prod-*`) in
-  the NAME column.
+- Quote range-pattern YAML keys that contain `[`: `"app[1..20]"`.
+- Pattern entries appear in `yconn list` with their raw pattern name (e.g. `app[1..20]`)
+  in the NAME column.
 - Same-pattern names across layers follow normal priority rules (higher layer wins) and
   do not trigger conflict detection.
 
