@@ -119,23 +119,35 @@ Connection names (YAML keys in the `connections:` map) can use glob-style wildca
 ```yaml
 connections:
   web-*:
-    host: ""   # ignored — the matched input IS the hostname
+    host: "${name}.corp.com"   # ${name} is replaced with the matched input
     user: deploy
     auth: key
     key: ~/.ssh/web_key
     description: "Any web server matching web-*"
+
+  db-*:
+    host: "${name}"            # equivalent to omitting the template — input used directly
+    user: dbadmin
+    auth: password
+    description: "Any database server matching db-*"
 ```
 
 When you run `yconn connect web-prod-01`, yconn matches the input against all known
-patterns. The matched input (`web-prod-01`) becomes the SSH hostname directly — there
-is no template substitution.
+patterns. The `host:` field is then resolved:
+
+- If `host` contains `${name}`, only that token is replaced with the matched input.
+  `host: ${name}.corp.com` with input `web-prod-01` → SSH target `web-prod-01.corp.com`.
+- If `host` does not contain `${name}`, the entire field is replaced by the matched input.
+  This is the legacy behaviour — a blank or placeholder host still works as before.
 
 **Lookup rules:**
 
-1. Exact name match wins immediately. No conflict check is performed.
+1. Exact name match wins immediately. No conflict check is performed. The `host:` field
+   is used as-is — `${name}` is not expanded for exact matches.
 2. If no exact match, all wildcard patterns are tested against the input.
-3. Exactly one pattern must match. If two different patterns both match the same input,
-   yconn exits with a conflict error naming each pattern and its source file.
+3. Exactly one pattern must match. Its `host:` field is resolved as described above.
+   If two different patterns both match the same input, yconn exits with a conflict error
+   naming each pattern and its source file.
 4. Same-pattern names across layers follow normal priority rules (higher layer wins) and
    do not trigger conflict detection.
 

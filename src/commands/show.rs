@@ -1,15 +1,13 @@
 // Handler for `yconn show <name>` — show the resolved config for a connection
 // without printing any secrets.
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
 use crate::config::LoadedConfig;
 use crate::display::{ConnectionDetail, Renderer};
 
 pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str) -> Result<()> {
-    let conn = cfg
-        .find(name)
-        .ok_or_else(|| anyhow!("no connection named '{name}'"))?;
+    let conn = cfg.find_with_wildcard(name)?;
 
     let detail = ConnectionDetail {
         name: conn.name.clone(),
