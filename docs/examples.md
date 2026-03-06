@@ -337,7 +337,7 @@ yconn group clear
 ## Wildcard pattern usage
 
 **When to use:** You manage many similarly-named hosts (e.g. a fleet of web servers) and
-want a single connection entry to cover all of them, using the input hostname directly.
+want a single connection entry to cover all of them.
 
 **`.yconn/connections.yaml`**
 
@@ -346,14 +346,14 @@ version: 1
 
 connections:
   web-prod-*:
-    host: ""          # ignored — the matched input becomes the SSH hostname
+    host: "${name}.corp.com"   # ${name} expands to the matched input → web-prod-01.corp.com
     user: deploy
     auth: key
     key: ~/.ssh/web_prod_key
     description: "Production web fleet (web-prod-01, web-prod-02, ...)"
 
   db-staging-?:
-    host: ""          # ignored — the matched input becomes the SSH hostname
+    host: "${name}.db.internal"
     user: dbadmin
     auth: key
     key: ~/.ssh/db_staging_key
@@ -371,10 +371,10 @@ connections:
 **Commands:**
 
 ```bash
-# Connect to web-prod-01 — matches web-prod-* pattern; input becomes the SSH hostname
+# Connect to web-prod-01 — matches web-prod-* pattern; SSH target is web-prod-01.corp.com
 yconn connect web-prod-01
 
-# Connect to web-prod-07 — same pattern, different host
+# Connect to web-prod-07 — same pattern, SSH target is web-prod-07.corp.com
 yconn connect web-prod-07
 
 # Connect to db-staging-a — matches db-staging-? pattern
@@ -393,16 +393,19 @@ yconn show web-prod-01
    immediately — no pattern check is done.
 2. All connection names are tested as glob patterns against the input. `*` matches any
    sequence of characters; `?` matches any single character.
-3. The matched input string (`web-prod-01`) becomes the SSH hostname directly. The
-   `host:` field in the YAML entry is overridden by the matched input.
+3. The `host:` field is resolved for the matched entry:
+   - If `host` contains `${name}`, only that token is replaced with the matched input.
+     `host: ${name}.corp.com` + input `web-prod-01` → SSH target `web-prod-01.corp.com`.
+   - If `host` does not contain `${name}`, the entire field is replaced by the matched input
+     (legacy behaviour — blank or placeholder hosts still work as before).
 4. If two different patterns both match the same input (e.g. `web-*` and `web-prod-*`
    both match `web-prod-01`), yconn exits with a conflict error naming each pattern
    and its source file. Resolve this by making your patterns non-overlapping.
 
 **Notes:**
 
-- The `host:` field in wildcard entries is overridden at connect time. You can leave it
-  blank or set it to a placeholder value — it will not be used for SSH.
+- Use `host: "${name}.corp.com"` to append a domain suffix to every matched input.
+- Use `host: "${name}"` or leave host blank/placeholder for bare-hostname behaviour.
 - Wildcard entries appear in `yconn list` with their pattern name (e.g. `web-prod-*`) in
   the NAME column.
 - Same-pattern names across layers follow normal priority rules (higher layer wins) and

@@ -197,9 +197,14 @@ impl LoadedConfig {
             0 => Err(anyhow::anyhow!("no connection named '{input}'")),
             1 => {
                 let mut resolved = matches[0].clone();
-                // The matched input IS the host — override the pattern's host
-                // field with the literal input string.
-                resolved.host = input.to_string();
+                // Substitute the matched input into the host field.
+                // If the host contains "${name}", replace only that token;
+                // otherwise fall back to replacing the entire host field.
+                resolved.host = if resolved.host.contains("${name}") {
+                    resolved.host.replace("${name}", input)
+                } else {
+                    input.to_string()
+                };
                 Ok(resolved)
             }
             _ => {
@@ -1584,5 +1589,62 @@ mod tests {
 
         let err = cfg.find_with_wildcard("web-12").unwrap_err();
         assert!(err.to_string().contains("web-12"));
+    }
+
+    /// `host: ${name}.corp.com` — the `${name}` token is replaced with the
+    /// matched input, producing a FQDN.
+    #[test]
+    fn test_wildcard_host_with_name_template_is_expanded() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  server*:\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth: password\n    description: Corp servers\n",
+        );
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+
+        let conn = cfg.find_with_wildcard("server01").unwrap();
+        assert_eq!(conn.host, "server01.corp.com");
+    }
+
+    /// `host: placeholder` (no `${name}`) — entire host is replaced by input,
+    /// preserving the original behaviour.
+    #[test]
+    fn test_wildcard_host_without_name_template_replaced_by_input() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  web-*:\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Web servers\n",
+        );
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+
+        let conn = cfg.find_with_wildcard("web-prod").unwrap();
+        assert_eq!(conn.host, "web-prod");
+    }
+
+    /// An exact-name entry with `host: ${name}.corp.com` is returned via the
+    /// exact-match path — the `${name}` token is NOT expanded.
+    #[test]
+    fn test_wildcard_exact_match_name_template_not_expanded() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  myconn:\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth: password\n    description: My connection\n",
+        );
+        let empty = TempDir::new().unwrap();
+
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+
+        let conn = cfg.find_with_wildcard("myconn").unwrap();
+        assert_eq!(conn.host, "${name}.corp.com");
     }
 }

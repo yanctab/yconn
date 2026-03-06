@@ -796,3 +796,28 @@ fn wildcard_conflict_exits_nonzero_with_pattern_names_in_stderr() {
         "expected pattern '?eb-prod' named in stderr, got: {stderr}"
     );
 }
+
+/// `yconn connect` with `host: ${name}.corp.com` — mock ssh receives
+/// `user@server01.corp.com`, not `user@server01`.
+#[test]
+fn wildcard_name_template_in_host_expands_to_fqdn() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  server*:\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth: password\n    description: Corp servers\n",
+    );
+
+    let out = env.run_in_container(&["connect", "server01"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("deploy@server01.corp.com"),
+        "expected 'deploy@server01.corp.com' in stdout, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("deploy@server01 ") && !stdout.ends_with("deploy@server01"),
+        "expected FQDN host, not bare input, got: {stdout}"
+    );
+}

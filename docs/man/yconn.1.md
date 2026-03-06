@@ -27,10 +27,12 @@ layers:
 Higher-priority layers win on name collision. A layer that has no `connections.yaml`
 is silently skipped.
 
-Connection names may contain glob wildcards (`*`, `?`). When a wildcard pattern is
-used, the matched input becomes the SSH hostname directly (the pattern IS the host
-template). Exact name matches always win over wildcard patterns. If two different
-patterns both match the same input, yconn exits with a conflict error.
+Connection names may contain glob wildcards (`*`, `?`). When a wildcard pattern
+matches, the SSH hostname is resolved from the entry's `host:` field: if it contains
+`${name}`, only that token is replaced with the input (e.g. `${name}.corp.com` →
+`web-prod-01.corp.com`); otherwise the entire host field is replaced by the input.
+Exact name matches always win over wildcard patterns. If two different patterns both
+match the same input, yconn exits with a conflict error.
 
 When a **docker** block is present in the project or system config, yconn
 re-invokes itself inside a container before doing anything else. This allows SSH
@@ -48,7 +50,9 @@ keys to be pre-baked into an image rather than distributed to developer machines
 : Connect to the named host by invoking SSH. Replaces the current process so
   terminal behavior (TTY, signals) works correctly. *NAME* is matched first as
   an exact connection name, then against wildcard patterns. When a wildcard
-  pattern matches, the input string is used directly as the SSH hostname.
+  pattern matches, the SSH hostname is derived from the entry's `host:` field:
+  if it contains `${name}`, that token is replaced with the input; otherwise
+  the input string is used directly as the hostname.
 
 **show** *NAME*
 : Print the resolved config for a connection. Credentials (key paths) are shown
@@ -145,7 +149,7 @@ connections:
     link: https://wiki.internal/servers/prod-web
 
   web-*:
-    host: ""          # ignored for wildcard entries — input IS the host
+    host: "${name}.corp.com"   # ${name} is replaced with the matched input
     user: deploy
     auth: key
     key: ~/.ssh/web_key
@@ -155,8 +159,10 @@ connections:
 ## Wildcard patterns
 
 Connection names may use `*` (any sequence) and `?` (any single character).
-When a wildcard pattern matches the input to **yconn connect**, the matched
-input string becomes the SSH hostname — no substitution occurs. Two different
+When a wildcard pattern matches the input to **yconn connect**, the `host:`
+field is resolved: if it contains `${name}`, only that token is replaced with
+the matched input (e.g. `${name}.corp.com` → `web-prod-01.corp.com`);
+otherwise the entire host field is replaced by the input. Two different
 patterns matching the same input is a conflict and causes yconn to exit
 non-zero with a clear error.
 
