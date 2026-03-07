@@ -79,7 +79,7 @@ fn main() -> Result<()> {
                 &cfg, &renderer, dry_run, &home, &overrides, skip_user,
             )
         }
-        Commands::User { subcommand } => match subcommand {
+        Commands::Users { subcommand } => match subcommand {
             UserCommands::Show => {
                 let cfg = load_and_warn(&renderer, verbose)?;
                 commands::user::show(&cfg, &renderer)

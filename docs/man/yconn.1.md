@@ -122,18 +122,18 @@ keys to be pre-baked into an image rather than distributed to developer machines
   - **--skip-user** — omit `User` lines from all generated Host blocks.
     Mutually exclusive with **--user**.
 
-**user show**
+**users show**
 : List all user key/value entries across all config layers. Displays KEY, VALUE,
   and SOURCE columns. Shadowed entries (overridden by a higher-priority layer)
   are shown dimmed with a `[shadowed]` tag. Use this to inspect what `${key}`
   templates will expand to.
 
-**user add**
+**users add**
 : Interactive wizard that prompts for a key and value and writes the entry to the
   `users:` section of the target layer's config file. Defaults to the user layer
   (`~/.config/yconn/connections.yaml`). Use **--layer** to target a specific layer.
 
-**user edit** *KEY*
+**users edit** *KEY*
 : Open the source config file that contains the named user entry in **$EDITOR**.
   Defaults to the active (highest-priority) entry. Use **--layer** to target a
   specific layer.
@@ -154,7 +154,7 @@ keys to be pre-baked into an image rather than distributed to developer machines
 : Print version and exit.
 
 The **--layer** *system*|*user*|*project* flag applies only to **add**, **edit**,
-**remove**, **user add**, and **user edit** — it is a per-subcommand flag, not a
+**remove**, **users add**, and **users edit** — it is a per-subcommand flag, not a
 global option.
 
 # CONFIGURATION
@@ -338,10 +338,10 @@ yconn ssh-config --skip-user
 Manage user key/value entries:
 
 ```
-yconn user show
-yconn user add
-yconn user add --layer project
-yconn user edit t1user
+yconn users show
+yconn users add
+yconn users add --layer project
+yconn users edit t1user
 ```
 
 Connect with a per-invocation user override:

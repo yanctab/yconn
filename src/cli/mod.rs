@@ -140,7 +140,7 @@ pub enum Commands {
     },
 
     /// Manage user key/value entries in the users: config section
-    User {
+    Users {
         #[command(subcommand)]
         subcommand: UserCommands,
     },

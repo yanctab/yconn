@@ -59,7 +59,7 @@ pub struct ConfigStatus {
     pub docker: Option<DockerInfo>,
 }
 
-/// A row in the `yconn user show` output table.
+/// A row in the `yconn users show` output table.
 pub struct UserRow {
     pub key: String,
     pub value: String,
@@ -454,7 +454,7 @@ impl Renderer {
         println!();
     }
 
-    /// Print the user list table (`yconn user show`).
+    /// Print the user list table (`yconn users show`).
     ///
     /// Accepts a slice of [`crate::config::UserEntry`] directly to avoid
     /// requiring callers to construct [`UserRow`] manually.

@@ -537,16 +537,16 @@ yconn show prod-web
 # User: ${t1user}   ← raw value, not expanded
 
 # List all user entries across all layers (with source and shadowing info)
-yconn user show
+yconn users show
 
 # Add a new user entry interactively (defaults to user layer)
-yconn user add
+yconn users add
 
 # Add to the project layer instead
-yconn user add --layer project
+yconn users add --layer project
 
 # Edit the source file for a named entry
-yconn user edit t1user
+yconn users edit t1user
 
 # Generate SSH config — expands ${t1user} in User lines
 yconn ssh-config
