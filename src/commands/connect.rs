@@ -222,7 +222,17 @@ mod tests {
 
         let p = plan(&cfg, "srv", &argv(&["yconn", "connect", "srv"]), false).unwrap();
         if let ConnectPlan::Ssh(args) = p {
-            assert_eq!(args, vec!["ssh", "-i", "~/.ssh/id_ed25519", "admin@myhost"]);
+            assert_eq!(
+                args,
+                vec![
+                    "ssh",
+                    "-F",
+                    "/dev/null",
+                    "-i",
+                    "~/.ssh/id_ed25519",
+                    "admin@myhost"
+                ]
+            );
         }
     }
 
@@ -240,7 +250,7 @@ mod tests {
 
         let p = plan(&cfg, "db", &argv(&["yconn", "connect", "db"]), false).unwrap();
         if let ConnectPlan::Ssh(args) = p {
-            assert_eq!(args, vec!["ssh", "dbadmin@db.internal"]);
+            assert_eq!(args, vec!["ssh", "-F", "/dev/null", "dbadmin@db.internal"]);
         }
     }
 
