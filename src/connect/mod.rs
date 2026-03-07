@@ -25,13 +25,20 @@ use crate::config::Connection;
 /// directly to `execvp`.
 ///
 /// Rules:
+/// - `-F /dev/null` is always inserted immediately after `"ssh"` to bypass
+///   `~/.ssh/config`. This ensures yconn's own config is the sole source of
+///   truth for connection parameters. Any `Include`, `IdentityFile`,
+///   `ServerAliveInterval`, or other user config directives in `~/.ssh/config`
+///   will be ignored when connecting via yconn.
 /// - `auth: key` → `-i <key>` inserted before destination; port flag added
 ///   when port ≠ 22.
 /// - `auth: password` (or any other value) → no `-i` flag; port flag added
 ///   when port ≠ 22.
 /// - Destination is always `user@host`.
 pub fn build_args(conn: &Connection) -> Vec<String> {
-    let mut args = vec!["ssh".to_string()];
+    // -F /dev/null suppresses ~/.ssh/config entirely so yconn config is
+    // the sole authority for all SSH connection parameters.
+    let mut args = vec!["ssh".to_string(), "-F".to_string(), "/dev/null".to_string()];
 
     if conn.auth == "key" {
         if let Some(ref key) = conn.key {
@@ -127,7 +134,10 @@ mod tests {
     fn test_key_auth_default_port() {
         let conn = make_conn("key", Some("~/.ssh/id_rsa"), 22, "myhost", "deploy");
         let args = build_args(&conn);
-        assert_eq!(args, vec!["ssh", "-i", "~/.ssh/id_rsa", "deploy@myhost"]);
+        assert_eq!(
+            args,
+            vec!["ssh", "-F", "/dev/null", "-i", "~/.ssh/id_rsa", "deploy@myhost"]
+        );
     }
 
     #[test]
@@ -136,7 +146,16 @@ mod tests {
         let args = build_args(&conn);
         assert_eq!(
             args,
-            vec!["ssh", "-i", "~/.ssh/id_rsa", "-p", "2222", "deploy@myhost"]
+            vec![
+                "ssh",
+                "-F",
+                "/dev/null",
+                "-i",
+                "~/.ssh/id_rsa",
+                "-p",
+                "2222",
+                "deploy@myhost"
+            ]
         );
     }
 
@@ -144,14 +163,37 @@ mod tests {
     fn test_password_auth_default_port() {
         let conn = make_conn("password", None, 22, "myhost", "deploy");
         let args = build_args(&conn);
-        assert_eq!(args, vec!["ssh", "deploy@myhost"]);
+        assert_eq!(args, vec!["ssh", "-F", "/dev/null", "deploy@myhost"]);
     }
 
     #[test]
     fn test_password_auth_custom_port() {
         let conn = make_conn("password", None, 2222, "myhost", "deploy");
         let args = build_args(&conn);
-        assert_eq!(args, vec!["ssh", "-p", "2222", "deploy@myhost"]);
+        assert_eq!(
+            args,
+            vec!["ssh", "-F", "/dev/null", "-p", "2222", "deploy@myhost"]
+        );
+    }
+
+    #[test]
+    fn test_f_devnull_always_present() {
+        // -F /dev/null must appear regardless of auth type or port.
+        let cases = vec![
+            make_conn("key", Some("~/.ssh/id_rsa"), 22, "host", "user"),
+            make_conn("key", Some("~/.ssh/id_rsa"), 2222, "host", "user"),
+            make_conn("password", None, 22, "host", "user"),
+            make_conn("password", None, 2222, "host", "user"),
+        ];
+        for conn in &cases {
+            let args = build_args(conn);
+            assert_eq!(args[1], "-F", "expected -F at position 1: {:?}", args);
+            assert_eq!(
+                args[2], "/dev/null",
+                "expected /dev/null at position 2: {:?}",
+                args
+            );
+        }
     }
 
     // ── verbose SSH command format (same multiline format as verbose_docker_cmd) ─
@@ -275,7 +317,7 @@ mod tests {
         // auth=key but no key path — no -i flag emitted
         let conn = make_conn("key", None, 22, "myhost", "user");
         let args = build_args(&conn);
-        assert_eq!(args, vec!["ssh", "user@myhost"]);
+        assert_eq!(args, vec!["ssh", "-F", "/dev/null", "user@myhost"]);
     }
 
     #[test]

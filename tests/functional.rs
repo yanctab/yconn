@@ -248,8 +248,8 @@ fn ssh_key_auth_default_port() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains(&format!("ssh -i {key} deploy@myhost")),
-        "expected 'ssh -i {key} deploy@myhost' in stdout, got: {stdout}"
+        stdout.contains(&format!("ssh -F /dev/null -i {key} deploy@myhost")),
+        "expected 'ssh -F /dev/null -i {key} deploy@myhost' in stdout, got: {stdout}"
     );
     assert!(
         !stdout.contains("-p "),
@@ -271,8 +271,8 @@ fn ssh_key_auth_custom_port() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains(&format!("ssh -i {key} -p 2222 admin@myhost")),
-        "expected 'ssh -i {key} -p 2222 admin@myhost' in stdout, got: {stdout}"
+        stdout.contains(&format!("ssh -F /dev/null -i {key} -p 2222 admin@myhost")),
+        "expected 'ssh -F /dev/null -i {key} -p 2222 admin@myhost' in stdout, got: {stdout}"
     );
 }
 
@@ -289,8 +289,8 @@ fn ssh_password_auth_default_port() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("ssh dbadmin@db.internal"),
-        "expected 'ssh dbadmin@db.internal' in stdout, got: {stdout}"
+        stdout.contains("ssh -F /dev/null dbadmin@db.internal"),
+        "expected 'ssh -F /dev/null dbadmin@db.internal' in stdout, got: {stdout}"
     );
     assert!(
         !stdout.contains("-i "),
@@ -315,8 +315,8 @@ fn ssh_password_auth_custom_port() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("ssh -p 2222 ec2-user@bastion.example.com"),
-        "expected 'ssh -p 2222 ec2-user@bastion.example.com' in stdout, got: {stdout}"
+        stdout.contains("ssh -F /dev/null -p 2222 ec2-user@bastion.example.com"),
+        "expected 'ssh -F /dev/null -p 2222 ec2-user@bastion.example.com' in stdout, got: {stdout}"
     );
     assert!(
         !stdout.contains("-i "),
@@ -340,8 +340,10 @@ fn connect_key_auth_prints_connecting_line_to_stderr() {
 
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains(&format!("[yconn] Connecting: ssh -i {key} deploy@myhost")),
-        "expected '[yconn] Connecting: ssh -i {key} deploy@myhost' in stderr, got: {stderr}"
+        stderr.contains(&format!(
+            "[yconn] Connecting: ssh -F /dev/null -i {key} deploy@myhost"
+        )),
+        "expected '[yconn] Connecting: ssh -F /dev/null -i {key} deploy@myhost' in stderr, got: {stderr}"
     );
 }
 
@@ -358,8 +360,8 @@ fn connect_password_auth_prints_connecting_line_to_stderr() {
 
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("[yconn] Connecting: ssh dbadmin@db.internal"),
-        "expected '[yconn] Connecting: ssh dbadmin@db.internal' in stderr, got: {stderr}"
+        stderr.contains("[yconn] Connecting: ssh -F /dev/null dbadmin@db.internal"),
+        "expected '[yconn] Connecting: ssh -F /dev/null dbadmin@db.internal' in stderr, got: {stderr}"
     );
 }
 
@@ -377,7 +379,7 @@ fn connect_connecting_line_stdout_is_unaffected() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("ssh dbadmin@db.internal"),
+        stdout.contains("ssh -F /dev/null dbadmin@db.internal"),
         "expected mock ssh output in stdout, got: {stdout}"
     );
     assert!(
