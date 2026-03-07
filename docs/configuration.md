@@ -249,15 +249,15 @@ all generated Host blocks. `--skip-user` and `--user` are mutually exclusive.
 
 ```bash
 # List all user entries across all layers
-yconn user show
+yconn users show
 
 # Add a user entry interactively (defaults to user layer)
-yconn user add
-yconn user add --layer project
+yconn users add
+yconn users add --layer project
 
 # Open the source file for a named entry in $EDITOR
-yconn user edit t1user
-yconn user edit t1user --layer user
+yconn users edit t1user
+yconn users edit t1user --layer user
 ```
 
 ---

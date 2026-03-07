@@ -1098,9 +1098,9 @@ fn ssh_config_skip_user_omits_user_lines() {
     );
 }
 
-// ─── yconn user ──────────────────────────────────────────────────────────────
+// ─── yconn users ─────────────────────────────────────────────────────────────
 
-/// `yconn user show` lists all user entries across layers with correct source.
+/// `yconn users show` lists all user entries across layers with correct source.
 #[test]
 fn user_show_lists_entries_with_source() {
     let env = TestEnv::new();
@@ -1110,7 +1110,7 @@ fn user_show_lists_entries_with_source() {
         "version: 1\n\nusers:\n  t1user: \"t1extmzigher\"\n  devkey: \"devval\"\n",
     );
 
-    let out = env.run(&["user", "show"]);
+    let out = env.run(&["users", "show"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -1132,17 +1132,17 @@ fn user_show_lists_entries_with_source() {
     );
 }
 
-/// `yconn user add` round-trip: add an entry then `yconn user show` reflects it.
+/// `yconn users add` round-trip: add an entry then `yconn users show` reflects it.
 #[test]
 fn user_add_round_trip_show_reflects_new_entry() {
     let env = TestEnv::new();
 
     // Add a user entry interactively.
-    let out = env.run_with_stdin(&["user", "add"], "newkey\nnewval\n");
+    let out = env.run_with_stdin(&["users", "add"], "newkey\nnewval\n");
     TestEnv::assert_ok(&out);
 
-    // Confirm `user show` returns the new entry.
-    let out2 = env.run(&["user", "show"]);
+    // Confirm `users show` returns the new entry.
+    let out2 = env.run(&["users", "show"]);
     TestEnv::assert_ok(&out2);
 
     let stdout = String::from_utf8_lossy(&out2.stdout);
@@ -1227,16 +1227,16 @@ fn connect_user_override_shadows_config_users_entry() {
     );
 }
 
-// ─── yconn user show — username header ───────────────────────────────────────
+// ─── yconn users show — username header ──────────────────────────────────────
 
-/// `yconn user show` prints `Username: alice` when the `users:` map contains
+/// `yconn users show` prints `Username: alice` when the `users:` map contains
 /// a `user` key with value `alice`.
 #[test]
 fn user_show_prints_username_from_map() {
     let env = TestEnv::new();
     env.write_user_config("connections", "version: 1\n\nusers:\n  user: \"alice\"\n");
 
-    let out = env.run(&["user", "show"]);
+    let out = env.run(&["users", "show"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -1246,13 +1246,13 @@ fn user_show_prints_username_from_map() {
     );
 }
 
-/// `yconn user show` prints `Username: bob` when no `user` key exists in the
+/// `yconn users show` prints `Username: bob` when no `user` key exists in the
 /// `users:` map but the `USER` environment variable is set to `bob`.
 #[test]
 fn user_show_prints_username_from_env_var() {
     let env = TestEnv::new();
     // No users map at all — fall back to $USER env var.
-    let out = env.run_with_env(&["user", "show"], &[("USER", "bob")]);
+    let out = env.run_with_env(&["users", "show"], &[("USER", "bob")]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);

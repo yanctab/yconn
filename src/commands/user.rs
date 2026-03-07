@@ -1,4 +1,4 @@
-// Handler for `yconn user show|add|edit` — manage the users: config section.
+// Handler for `yconn users show|add|edit` — manage the users: config section.
 
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -11,7 +11,7 @@ use crate::display::Renderer;
 
 // ─── Public entry points ──────────────────────────────────────────────────────
 
-/// `yconn user show` — list all user entries across layers with source and
+/// `yconn users show` — list all user entries across layers with source and
 /// shadowing info.
 pub fn show(cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
     let username = resolve_username(cfg);
@@ -20,7 +20,7 @@ pub fn show(cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
     Ok(())
 }
 
-/// Resolve the display username for `yconn user show`.
+/// Resolve the display username for `yconn users show`.
 ///
 /// Resolution order:
 /// 1. The value of the `user` key in the merged `users:` map (if present).
@@ -39,7 +39,7 @@ fn resolve_username_with_env(cfg: &LoadedConfig, env_user: Option<&str>) -> Stri
     env_user.unwrap_or("").to_string()
 }
 
-/// `yconn user add` — interactive wizard to add a user entry to a layer.
+/// `yconn users add` — interactive wizard to add a user entry to a layer.
 pub fn add(layer: Option<LayerArg>) -> Result<()> {
     let target_layer = layer_arg_to_layer(layer);
     let target_dir = layer_path(target_layer)?;
@@ -54,7 +54,7 @@ pub fn add(layer: Option<LayerArg>) -> Result<()> {
     )
 }
 
-/// `yconn user edit` — open the source config file for a named user entry in
+/// `yconn users edit` — open the source config file for a named user entry in
 /// $EDITOR.
 pub fn edit(cfg: &LoadedConfig, key: &str, layer: Option<LayerArg>) -> Result<()> {
     let path = resolve_edit_path(cfg, key, layer)?;
