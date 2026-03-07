@@ -14,8 +14,29 @@ use crate::display::Renderer;
 /// `yconn user show` — list all user entries across layers with source and
 /// shadowing info.
 pub fn show(cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
+    let username = resolve_username(cfg);
+    renderer.print_username_header(&username);
     renderer.user_list(&cfg.all_users);
     Ok(())
+}
+
+/// Resolve the display username for `yconn user show`.
+///
+/// Resolution order:
+/// 1. The value of the `user` key in the merged `users:` map (if present).
+/// 2. The `$USER` environment variable (if set).
+/// 3. An empty string.
+fn resolve_username(cfg: &LoadedConfig) -> String {
+    resolve_username_with_env(cfg, std::env::var("USER").ok().as_deref())
+}
+
+/// Inner implementation that accepts an optional env var value so unit tests
+/// can supply a known value without mutating the process environment.
+fn resolve_username_with_env(cfg: &LoadedConfig, env_user: Option<&str>) -> String {
+    if let Some(entry) = cfg.users.get("user") {
+        return entry.value.clone();
+    }
+    env_user.unwrap_or("").to_string()
 }
 
 /// `yconn user add` — interactive wizard to add a user entry to a layer.
@@ -400,5 +421,65 @@ mod tests {
         let target = dir.path().join("connections.yaml");
         let mode = fs::metadata(&target).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
+    }
+
+    // ── resolve_username_with_env ─────────────────────────────────────────────
+
+    /// When the `users:` map contains a `user` key, its value is used as the
+    /// display username regardless of the `$USER` environment variable.
+    #[test]
+    fn test_resolve_username_uses_map_value_when_present() {
+        let cwd = TempDir::new().unwrap();
+        let user_dir = TempDir::new().unwrap();
+        write_yaml(
+            user_dir.path(),
+            "connections.yaml",
+            "version: 1\n\nusers:\n  user: \"alice\"\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(cwd.path(), Some(user_dir.path()), empty.path());
+
+        let result = resolve_username_with_env(&cfg, Some("bob"));
+        assert_eq!(
+            result, "alice",
+            "map value should take priority over env var"
+        );
+    }
+
+    /// When the `users:` map has no `user` key but `$USER` is set, the env
+    /// var value is used as the display username.
+    #[test]
+    fn test_resolve_username_falls_back_to_env_var() {
+        let cwd = TempDir::new().unwrap();
+        let user_dir = TempDir::new().unwrap();
+        // users map present but no `user` key
+        write_yaml(
+            user_dir.path(),
+            "connections.yaml",
+            "version: 1\n\nusers:\n  t1user: \"t1val\"\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(cwd.path(), Some(user_dir.path()), empty.path());
+
+        let result = resolve_username_with_env(&cfg, Some("bob"));
+        assert_eq!(
+            result, "bob",
+            "should fall back to env var when map has no 'user' key"
+        );
+    }
+
+    /// When neither the `users:` map nor `$USER` is available, the resolved
+    /// username is an empty string.
+    #[test]
+    fn test_resolve_username_empty_when_both_absent() {
+        let cwd = TempDir::new().unwrap();
+        let empty = TempDir::new().unwrap();
+        let cfg = load(cwd.path(), None, empty.path());
+
+        let result = resolve_username_with_env(&cfg, None);
+        assert_eq!(
+            result, "",
+            "should be empty string when no map value and no env var"
+        );
     }
 }
