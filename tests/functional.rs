@@ -1109,7 +1109,7 @@ fn user_show_lists_entries_with_source() {
 
     env.write_user_config(
         "connections",
-        "version: 1\n\nusers:\n  t1user: \"t1extmzigher\"\n  devkey: \"devval\"\n",
+        "version: 1\n\nusers:\n  testuser: \"testusername\"\n  devkey: \"devval\"\n",
     );
 
     let out = env.run(&["users", "show"]);
@@ -1117,11 +1117,11 @@ fn user_show_lists_entries_with_source() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("t1user"),
-        "expected t1user in output: {stdout}"
+        stdout.contains("testuser"),
+        "expected testuser in output: {stdout}"
     );
     assert!(
-        stdout.contains("t1extmzigher"),
+        stdout.contains("testusername"),
         "expected value in output: {stdout}"
     );
     assert!(
@@ -1183,7 +1183,7 @@ fn connect_user_override_expands_dollar_user() {
     );
 }
 
-/// `yconn connect` with `${t1user}` from `users:` map receives `ops@host`.
+/// `yconn connect` with `${testuser}` from `users:` map receives `ops@host`.
 #[test]
 fn connect_named_users_map_entry_expands_in_user_field() {
     let env = TestEnv::new();
@@ -1192,7 +1192,7 @@ fn connect_named_users_map_entry_expands_in_user_field() {
     env.write_user_config(
         "connections",
         &format!(
-            "users:\n  t1user: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${{t1user}}\"\n    auth: key\n    key: {key}\n    description: test\n"
+            "users:\n  testuser: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${{testuser}}\"\n    auth: key\n    key: {key}\n    description: test\n"
         ),
     );
 
@@ -1206,7 +1206,7 @@ fn connect_named_users_map_entry_expands_in_user_field() {
     );
 }
 
-/// `yconn connect --user t1user:alice` overrides config-loaded users: entry.
+/// `yconn connect --user testuser:alice` overrides config-loaded users: entry.
 #[test]
 fn connect_user_override_shadows_config_users_entry() {
     let env = TestEnv::new();
@@ -1215,11 +1215,11 @@ fn connect_user_override_shadows_config_users_entry() {
     env.write_user_config(
         "connections",
         &format!(
-            "users:\n  t1user: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${{t1user}}\"\n    auth: key\n    key: {key}\n    description: test\n"
+            "users:\n  testuser: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${{testuser}}\"\n    auth: key\n    key: {key}\n    description: test\n"
         ),
     );
 
-    let out = env.run_in_container(&["connect", "--user", "t1user:alice", "srv"]);
+    let out = env.run_in_container(&["connect", "--user", "testuser:alice", "srv"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -1272,7 +1272,7 @@ fn show_dump_outputs_merged_config_as_yaml() {
     let env = TestEnv::new();
     env.write_project_config(
         "connections",
-        "connections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Production\n  staging:\n    host: 10.0.0.2\n    user: admin\n    auth: password\n    description: Staging\nusers:\n  t1user: alice\n  mybot: botuser\n",
+        "connections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Production\n  staging:\n    host: 10.0.0.2\n    user: admin\n    auth: password\n    description: Staging\nusers:\n  testuser: alice\n  mybot: botuser\n",
     );
     let out = env.run(&["show", "--dump"]);
     TestEnv::assert_ok(&out);
@@ -1283,7 +1283,7 @@ fn show_dump_outputs_merged_config_as_yaml() {
     assert!(stdout.contains("staging:"), "missing staging entry");
     assert!(stdout.contains("10.0.0.1"), "missing prod host");
     assert!(stdout.contains("users:"), "missing users: key");
-    assert!(stdout.contains("t1user:"), "missing t1user key");
+    assert!(stdout.contains("testuser:"), "missing testuser key");
     assert!(stdout.contains("mybot:"), "missing mybot key");
 }
 

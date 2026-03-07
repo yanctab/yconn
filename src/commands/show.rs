@@ -157,7 +157,7 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "connections:\n  web:\n    host: 1.2.3.4\n    user: ${t1user}\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Web server\nusers:\n  t1user: alice\n",
+            "connections:\n  web:\n    host: 1.2.3.4\n    user: ${testuser}\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Web server\nusers:\n  testuser: alice\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
@@ -165,9 +165,9 @@ mod tests {
         assert!(yaml.contains("connections:"));
         assert!(yaml.contains("users:"));
         assert!(yaml.contains("web:"));
-        assert!(yaml.contains("t1user"));
+        assert!(yaml.contains("testuser"));
         // Raw unexpanded value in connections
-        assert!(yaml.contains("${t1user}"));
+        assert!(yaml.contains("${testuser}"));
     }
 
     #[test]

@@ -174,12 +174,12 @@ docker:
     - "--network=host"
 
 users:
-  t1user: "t1extmzigher"   # referenced as ${t1user} in connection user fields
+  testuser: "testusername"   # referenced as ${testuser} in connection user fields
 
 connections:
   prod-web:
     host: 10.0.1.50
-    user: ${t1user}   # expands to "t1extmzigher" at connect time
+    user: ${testuser}   # expands to "testusername" at connect time
     port: 22          # optional, defaults to 22
     auth: key         # "key" | "password"
     key: ~/.ssh/prod_deploy_key
@@ -331,7 +331,7 @@ Generate SSH config (writes Host blocks to `~/.ssh/yconn-connections`):
 ```
 yconn ssh-config
 yconn ssh-config --dry-run
-yconn ssh-config --user t1user:alice
+yconn ssh-config --user testuser:alice
 yconn ssh-config --skip-user
 ```
 
@@ -341,13 +341,13 @@ Manage user key/value entries:
 yconn users show
 yconn users add
 yconn users add --layer project
-yconn users edit t1user
+yconn users edit testuser
 ```
 
 Connect with a per-invocation user override:
 
 ```
-yconn connect prod-web --user t1user:alice
+yconn connect prod-web --user testuser:alice
 yconn connect staging --user user:alice
 ```
 

@@ -307,9 +307,9 @@ mod tests {
     #[test]
     fn test_insert_user_entry_adds_users_section_when_missing() {
         let content = "version: 1\n";
-        let result = insert_user_entry(content, "t1user", "t1ext");
+        let result = insert_user_entry(content, "testuser", "t1ext");
         assert!(result.contains("users:"));
-        assert!(result.contains("t1user:"));
+        assert!(result.contains("testuser:"));
     }
 
     // ── user_entry_exists ─────────────────────────────────────────────────────
@@ -331,15 +331,15 @@ mod tests {
     #[test]
     fn test_add_creates_new_file_with_user_entry() {
         let dir = TempDir::new().unwrap();
-        let answers = ["t1user", "t1extmzigher"];
+        let answers = ["testuser", "testusername"];
         run_add(Layer::User, dir.path(), &answers).unwrap();
 
         let target = dir.path().join("connections.yaml");
         assert!(target.exists());
         let content = fs::read_to_string(&target).unwrap();
         assert!(content.contains("users:"));
-        assert!(content.contains("t1user:"));
-        assert!(content.contains("t1extmzigher"));
+        assert!(content.contains("testuser:"));
+        assert!(content.contains("testusername"));
     }
 
     #[test]
@@ -456,7 +456,7 @@ mod tests {
         write_yaml(
             user_dir.path(),
             "connections.yaml",
-            "version: 1\n\nusers:\n  t1user: \"t1val\"\n",
+            "version: 1\n\nusers:\n  testuser: \"t1val\"\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user_dir.path()), empty.path());

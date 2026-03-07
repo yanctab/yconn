@@ -471,7 +471,7 @@ mod tests {
 
     #[test]
     fn test_named_key_expanded_from_users_map() {
-        let yaml = "users:\n  t1user: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth: password\n    description: test\n";
+        let yaml = "users:\n  testuser: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${testuser}\"\n    auth: password\n    description: test\n";
         let (out, warnings) = render_expanded(yaml, &HashMap::new(), false);
         assert!(
             out.contains("    User ops\n"),
@@ -492,9 +492,9 @@ mod tests {
 
     #[test]
     fn test_user_override_overrides_users_map() {
-        let yaml = "users:\n  t1user: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth: password\n    description: test\n";
+        let yaml = "users:\n  testuser: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${testuser}\"\n    auth: password\n    description: test\n";
         let mut overrides = HashMap::new();
-        overrides.insert("t1user".to_string(), "alice".to_string());
+        overrides.insert("testuser".to_string(), "alice".to_string());
         let (out, warnings) = render_expanded(yaml, &overrides, false);
         assert!(
             out.contains("    User alice\n"),

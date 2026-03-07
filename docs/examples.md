@@ -503,12 +503,12 @@ everywhere.
 version: 1
 
 users:
-  t1user: "t1extmzigher"   # your personal username on the prod cluster
+  testuser: "testusername"   # your personal username on the prod cluster
 
 connections:
   prod-web:
     host: 10.0.1.50
-    user: ${t1user}           # expands to "t1extmzigher" at connect time
+    user: ${testuser}           # expands to "testusername" at connect time
     auth: key
     key: ~/.ssh/prod_key
     description: "Production web server"
@@ -523,18 +523,18 @@ connections:
 **Commands:**
 
 ```bash
-# Connect — yconn expands ${t1user} to "t1extmzigher" before invoking SSH
+# Connect — yconn expands ${testuser} to "testusername" before invoking SSH
 yconn connect prod-web
 
 # Override the users: entry for this invocation only (connect as alice instead)
-yconn connect prod-web --user t1user:alice
+yconn connect prod-web --user testuser:alice
 
 # Override the ${user} env-var expansion for this invocation
 yconn connect staging --user user:alice
 
 # Inspect raw config values — yconn show does NOT expand templates
 yconn show prod-web
-# User: ${t1user}   ← raw value, not expanded
+# User: ${testuser}   ← raw value, not expanded
 
 # List all user entries across all layers (with source and shadowing info)
 yconn users show
@@ -546,16 +546,16 @@ yconn users add
 yconn users add --layer project
 
 # Edit the source file for a named entry
-yconn users edit t1user
+yconn users edit testuser
 
-# Generate SSH config — expands ${t1user} in User lines
+# Generate SSH config — expands ${testuser} in User lines
 yconn ssh-config
 
 # Generate SSH config but skip all User lines
 yconn ssh-config --skip-user
 
-# Generate SSH config overriding t1user for this run
-yconn ssh-config --user t1user:alice
+# Generate SSH config overriding testuser for this run
+yconn ssh-config --user testuser:alice
 ```
 
 **Notes:**

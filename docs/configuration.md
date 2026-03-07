@@ -65,7 +65,7 @@ docker:
     - "--volume=/opt/certs:/opt/certs:ro"
 
 users:
-  t1user: "t1extmzigher"   # referenced as ${t1user} in connection user fields
+  testuser: "testusername"   # referenced as ${testuser} in connection user fields
 
 connections:
   prod-web:
@@ -181,13 +181,13 @@ The optional top-level `users:` map defines named string entries that can be ref
 version: 1
 
 users:
-  t1user: "t1extmzigher"
+  testuser: "testusername"
   devops: "ops-team"
 
 connections:
   prod-web:
     host: 10.0.1.50
-    user: ${t1user}        # expands to "t1extmzigher" at connect time
+    user: ${testuser}        # expands to "testusername" at connect time
     auth: key
     key: ~/.ssh/prod_key
     description: "Production web server"
@@ -224,7 +224,7 @@ a single invocation, use `--user user:<name>` (see below).
 ### `yconn show` displays raw values
 
 `yconn show <name>` prints the `user` field value as-is, without any template expansion. The
-raw config value (e.g. `${t1user}`) is shown, not the expanded value.
+raw config value (e.g. `${testuser}`) is shown, not the expanded value.
 
 ### Per-invocation overrides: `--user KEY:VALUE`
 
@@ -232,14 +232,14 @@ Both `yconn connect` and `yconn ssh-config` accept `--user KEY:VALUE` (repeatabl
 or add entries in the `users:` map for that invocation only:
 
 ```bash
-# Connect as "alice" regardless of what ${t1user} resolves to in config
-yconn connect prod-web --user t1user:alice
+# Connect as "alice" regardless of what ${testuser} resolves to in config
+yconn connect prod-web --user testuser:alice
 
 # Override the ${user} env-var expansion for this invocation
 yconn connect staging --user user:alice
 
 # Apply multiple overrides at once
-yconn connect prod-web --user t1user:alice --user devops:bob
+yconn connect prod-web --user testuser:alice --user devops:bob
 ```
 
 The `yconn ssh-config` command also supports `--skip-user` to omit `User` lines entirely from
@@ -256,8 +256,8 @@ yconn users add
 yconn users add --layer project
 
 # Open the source file for a named entry in $EDITOR
-yconn users edit t1user
-yconn users edit t1user --layer user
+yconn users edit testuser
+yconn users edit testuser --layer user
 ```
 
 ---

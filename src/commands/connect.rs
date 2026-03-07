@@ -599,7 +599,7 @@ mod tests {
     /// Named key from users: map expands in user field.
     #[test]
     fn test_named_key_expands_from_users_map() {
-        let cfg = conn_with_user_and_users_map("${t1user}", "users:\n  t1user: ops\n");
+        let cfg = conn_with_user_and_users_map("${testuser}", "users:\n  testuser: ops\n");
         let p = plan_with_overrides(
             &cfg,
             "srv",
@@ -640,12 +640,12 @@ mod tests {
         }
     }
 
-    /// `--user t1user:alice` overrides config-loaded users: entry.
+    /// `--user testuser:alice` overrides config-loaded users: entry.
     #[test]
     fn test_user_override_named_key_shadows_config() {
-        let cfg = conn_with_user_and_users_map("${t1user}", "users:\n  t1user: ops\n");
+        let cfg = conn_with_user_and_users_map("${testuser}", "users:\n  testuser: ops\n");
         let mut overrides = HashMap::new();
-        overrides.insert("t1user".to_string(), "alice".to_string());
+        overrides.insert("testuser".to_string(), "alice".to_string());
         let p = plan_with_overrides(
             &cfg,
             "srv",
@@ -666,10 +666,12 @@ mod tests {
     /// Multiple --user pairs are all applied.
     #[test]
     fn test_multiple_user_overrides_all_applied() {
-        let cfg =
-            conn_with_user_and_users_map("${t1user}", "users:\n  t1user: ops\n  other: ignored\n");
+        let cfg = conn_with_user_and_users_map(
+            "${testuser}",
+            "users:\n  testuser: ops\n  other: ignored\n",
+        );
         let mut overrides = HashMap::new();
-        overrides.insert("t1user".to_string(), "carol".to_string());
+        overrides.insert("testuser".to_string(), "carol".to_string());
         overrides.insert("other".to_string(), "dave".to_string());
         let p = plan_with_overrides(
             &cfg,
