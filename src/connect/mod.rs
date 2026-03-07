@@ -136,7 +136,14 @@ mod tests {
         let args = build_args(&conn);
         assert_eq!(
             args,
-            vec!["ssh", "-F", "/dev/null", "-i", "~/.ssh/id_rsa", "deploy@myhost"]
+            vec![
+                "ssh",
+                "-F",
+                "/dev/null",
+                "-i",
+                "~/.ssh/id_rsa",
+                "deploy@myhost"
+            ]
         );
     }
 

@@ -224,7 +224,14 @@ mod tests {
         if let ConnectPlan::Ssh(args) = p {
             assert_eq!(
                 args,
-                vec!["ssh", "-F", "/dev/null", "-i", "~/.ssh/id_ed25519", "admin@myhost"]
+                vec![
+                    "ssh",
+                    "-F",
+                    "/dev/null",
+                    "-i",
+                    "~/.ssh/id_ed25519",
+                    "admin@myhost"
+                ]
             );
         }
     }
