@@ -36,8 +36,9 @@ pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str, verbose: bool) -
     }
 
     // Direct SSH path: replace the current process with ssh.
+    let ssh_args = connect::build_args(&conn);
+    renderer.print_connecting(&ssh_args);
     if verbose {
-        let ssh_args = connect::build_args(&conn);
         renderer.verbose_ssh_cmd(&ssh_args);
     }
     connect::exec(&conn)
@@ -308,6 +309,93 @@ mod tests {
 
         let err = run(&cfg, &no_color(), "no-such-server", false).unwrap_err();
         assert!(err.to_string().contains("no-such-server"));
+    }
+
+    // ── print_connecting line format ──────────────────────────────────────────
+
+    /// Verify that the connecting line for a key-auth connection has the
+    /// expected single-line format: `[yconn] Connecting: ssh -i <key> user@host`.
+    #[test]
+    fn test_print_connecting_key_auth_format() {
+        // Use build_args directly — same path as run() uses.
+        use crate::config::{Connection, Layer};
+        use std::path::PathBuf;
+
+        let conn = Connection {
+            name: "srv".to_string(),
+            host: "myhost".to_string(),
+            user: "deploy".to_string(),
+            port: 22,
+            auth: "key".to_string(),
+            key: Some("~/.ssh/id_rsa".to_string()),
+            description: String::new(),
+            link: None,
+            group: None,
+            layer: Layer::User,
+            source_path: PathBuf::from("test.yaml"),
+            shadowed: false,
+        };
+        let args = crate::connect::build_args(&conn);
+        // Verify the connecting line would be: [yconn] Connecting: ssh -i ~/.ssh/id_rsa deploy@myhost
+        let line = format!("[yconn] Connecting: {}", args.join(" "));
+        assert!(
+            line.starts_with("[yconn] Connecting: ssh"),
+            "line must start with '[yconn] Connecting: ssh': {line}"
+        );
+        assert!(line.contains("-i"), "line must contain -i flag: {line}");
+        assert!(
+            line.contains("~/.ssh/id_rsa"),
+            "line must contain key path: {line}"
+        );
+        assert!(
+            line.contains("deploy@myhost"),
+            "line must contain destination: {line}"
+        );
+        assert!(
+            !line.contains('\n'),
+            "connecting line must be a single line: {line}"
+        );
+    }
+
+    /// Verify that the connecting line for a password-auth connection has the
+    /// expected single-line format: `[yconn] Connecting: ssh user@host`.
+    #[test]
+    fn test_print_connecting_password_auth_format() {
+        use crate::config::{Connection, Layer};
+        use std::path::PathBuf;
+
+        let conn = Connection {
+            name: "db".to_string(),
+            host: "db.internal".to_string(),
+            user: "dbadmin".to_string(),
+            port: 22,
+            auth: "password".to_string(),
+            key: None,
+            description: String::new(),
+            link: None,
+            group: None,
+            layer: Layer::User,
+            source_path: PathBuf::from("test.yaml"),
+            shadowed: false,
+        };
+        let args = crate::connect::build_args(&conn);
+        let line = format!("[yconn] Connecting: {}", args.join(" "));
+        assert!(
+            line.starts_with("[yconn] Connecting: ssh"),
+            "line must start with '[yconn] Connecting: ssh': {line}"
+        );
+        assert!(
+            !line.contains("-i"),
+            "line must not contain -i for password auth: {line}"
+        );
+        assert!(
+            line.contains("dbadmin@db.internal"),
+            "line must contain destination: {line}"
+        );
+        assert!(
+            !line.contains('\n'),
+            "connecting line must be a single line: {line}"
+        );
     }
 
     // ── expand_tilde ──────────────────────────────────────────────────────────

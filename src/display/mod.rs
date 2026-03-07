@@ -425,6 +425,17 @@ impl Renderer {
         }
     }
 
+    /// Print a single-line connecting notice to stderr, always emitted before SSH exec.
+    ///
+    /// Format: `[yconn] Connecting: ssh <arg1> <arg2> ...`
+    ///
+    /// This is intentionally different from `verbose_ssh_cmd` which uses a
+    /// multi-line backslash-continuation format — both coexist when `--verbose`
+    /// is also set.
+    pub fn print_connecting(&self, args: &[String]) {
+        eprintln!("[yconn] Connecting: {}", args.join(" "));
+    }
+
     /// Print a non-blocking warning to stderr.
     pub fn warn(&self, msg: &str) {
         eprintln!("warning: {msg}");

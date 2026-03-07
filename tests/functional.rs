@@ -304,6 +304,68 @@ fn ssh_password_auth_custom_port() {
     );
 }
 
+// ─── Connecting line on stderr ────────────────────────────────────────────────
+
+#[test]
+fn connect_key_auth_prints_connecting_line_to_stderr() {
+    let env = TestEnv::new();
+    let key = env.write_key("id_rsa");
+    env.write_user_config(
+        "connections",
+        &conn_key("myconn", "myhost", "deploy", None, &key),
+    );
+
+    let out = env.run_in_container(&["connect", "myconn"]);
+    TestEnv::assert_ok(&out);
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(&format!("[yconn] Connecting: ssh -i {key} deploy@myhost")),
+        "expected '[yconn] Connecting: ssh -i {key} deploy@myhost' in stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn connect_password_auth_prints_connecting_line_to_stderr() {
+    let env = TestEnv::new();
+    env.write_user_config(
+        "connections",
+        &conn_password("myconn", "db.internal", "dbadmin", None),
+    );
+
+    let out = env.run_in_container(&["connect", "myconn"]);
+    TestEnv::assert_ok(&out);
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("[yconn] Connecting: ssh dbadmin@db.internal"),
+        "expected '[yconn] Connecting: ssh dbadmin@db.internal' in stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn connect_connecting_line_stdout_is_unaffected() {
+    // The connecting line goes to stderr — stdout (mock ssh output) must be unchanged.
+    let env = TestEnv::new();
+    env.write_user_config(
+        "connections",
+        &conn_password("myconn", "db.internal", "dbadmin", None),
+    );
+
+    let out = env.run_in_container(&["connect", "myconn"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("ssh dbadmin@db.internal"),
+        "expected mock ssh output in stdout, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("[yconn] Connecting:"),
+        "connecting line must not appear in stdout, got: {stdout}"
+    );
+}
+
 // ─── Docker scenarios ─────────────────────────────────────────────────────────
 
 #[test]
