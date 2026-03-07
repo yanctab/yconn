@@ -890,7 +890,7 @@ fn ssh_config_generate_writes_host_blocks_and_include() {
         "connections:\n  prod-web:\n    host: 10.0.1.50\n    user: deploy\n    auth: key\n    key: ~/.ssh/prod_key\n    description: Production web\n  staging-db:\n    host: staging.internal\n    user: dbadmin\n    port: 2222\n    auth: password\n    description: Staging database\n",
     );
 
-    let out = env.run(&["ssh-config", "generate"]);
+    let out = env.run(&["ssh-config"]);
     TestEnv::assert_ok(&out);
 
     // yconn-connections file must exist with correct Host blocks.
@@ -951,7 +951,7 @@ fn ssh_config_generate_dry_run_prints_to_stdout_no_files_written() {
         "connections:\n  myhost:\n    host: 192.168.1.1\n    user: admin\n    auth: password\n    description: My host\n",
     );
 
-    let out = env.run(&["ssh-config", "generate", "--dry-run"]);
+    let out = env.run(&["ssh-config", "--dry-run"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
