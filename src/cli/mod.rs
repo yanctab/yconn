@@ -73,8 +73,13 @@ pub enum Commands {
 
     /// Show the resolved config for a connection (no secrets printed)
     Show {
-        /// Name of the connection to inspect
-        name: String,
+        /// Name of the connection to inspect. Required unless --dump is set.
+        #[arg(required_unless_present = "dump", conflicts_with = "dump")]
+        name: Option<String>,
+        /// Print the fully merged connections: and users: maps as YAML.
+        /// Mutually exclusive with providing a connection name.
+        #[arg(long, conflicts_with = "name")]
+        dump: bool,
     },
 
     /// Interactive wizard to add a connection to a chosen layer

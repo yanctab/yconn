@@ -528,6 +528,11 @@ impl Renderer {
     pub fn error(&self, msg: &str) {
         eprintln!("error: {msg}");
     }
+
+    /// Print a pre-serialised YAML string to stdout (`yconn show --dump`).
+    pub fn dump(&self, yaml: &str) {
+        print!("{yaml}");
+    }
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────

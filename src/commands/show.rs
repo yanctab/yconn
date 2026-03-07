@@ -1,10 +1,68 @@
-// Handler for `yconn show <name>` — show the resolved config for a connection
-// without printing any secrets.
+// Handler for `yconn show <name>` and `yconn show --dump`.
 
-use anyhow::Result;
+use std::collections::HashMap;
+
+use anyhow::{Context, Result};
+use serde::Serialize;
 
 use crate::config::LoadedConfig;
 use crate::display::{ConnectionDetail, Renderer};
+
+// ─── Dump serialisation types ─────────────────────────────────────────────────
+
+#[derive(Serialize)]
+struct DumpConn {
+    host: String,
+    user: String,
+    port: u16,
+    auth: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    key: Option<String>,
+    description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    link: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group: Option<String>,
+}
+
+#[derive(Serialize)]
+struct DumpOutput {
+    connections: HashMap<String, DumpConn>,
+    users: HashMap<String, String>,
+}
+
+/// Build the YAML string for `yconn show --dump`.
+fn build_dump_yaml(cfg: &LoadedConfig) -> Result<String> {
+    let mut connections = HashMap::new();
+    for conn in &cfg.connections {
+        connections.insert(
+            conn.name.clone(),
+            DumpConn {
+                host: conn.host.clone(),
+                user: conn.user.clone(),
+                port: conn.port,
+                auth: conn.auth.clone(),
+                key: conn.key.clone(),
+                description: conn.description.clone(),
+                link: conn.link.clone(),
+                group: conn.group.clone(),
+            },
+        );
+    }
+    let users: HashMap<String, String> = cfg
+        .users
+        .iter()
+        .map(|(k, v)| (k.clone(), v.value.clone()))
+        .collect();
+    let output = DumpOutput { connections, users };
+    serde_yaml::to_string(&output).context("failed to serialise config to YAML")
+}
+
+pub fn run_dump(cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
+    let yaml = build_dump_yaml(cfg)?;
+    renderer.dump(&yaml);
+    Ok(())
+}
 
 pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str) -> Result<()> {
     let conn = cfg.find_with_wildcard(name)?;
@@ -51,6 +109,76 @@ mod tests {
         sys: &std::path::Path,
     ) -> config::LoadedConfig {
         config::load_impl(cwd, Some("connections"), false, user, sys).unwrap()
+    }
+
+    // ── dump unit tests ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_dump_with_connections_only() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Test server\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        let yaml = build_dump_yaml(&cfg).unwrap();
+        assert!(yaml.contains("connections:"));
+        assert!(yaml.contains("srv:"));
+        assert!(yaml.contains("10.0.0.1"));
+    }
+
+    #[test]
+    fn test_dump_with_users_only() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            "users:\n  alice: al\n  bob: bobby\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        let yaml = build_dump_yaml(&cfg).unwrap();
+        assert!(yaml.contains("users:"));
+        assert!(yaml.contains("alice"));
+        assert!(yaml.contains("bob"));
+    }
+
+    #[test]
+    fn test_dump_with_connections_and_users() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            "connections:\n  web:\n    host: 1.2.3.4\n    user: ${t1user}\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Web server\nusers:\n  t1user: alice\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        let yaml = build_dump_yaml(&cfg).unwrap();
+        assert!(yaml.contains("connections:"));
+        assert!(yaml.contains("users:"));
+        assert!(yaml.contains("web:"));
+        assert!(yaml.contains("t1user"));
+        // Raw unexpanded value in connections
+        assert!(yaml.contains("${t1user}"));
+    }
+
+    #[test]
+    fn test_dump_with_empty_config() {
+        let cwd = TempDir::new().unwrap();
+        let empty = TempDir::new().unwrap();
+        let cfg = load(cwd.path(), None, empty.path());
+        let yaml = build_dump_yaml(&cfg).unwrap();
+        // Valid YAML even with no data
+        assert!(yaml.contains("connections:"));
+        assert!(yaml.contains("users:"));
     }
 
     #[test]

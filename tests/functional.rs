@@ -1261,3 +1261,73 @@ fn user_show_prints_username_from_env_var() {
         "expected 'Username: bob' in output: {stdout}"
     );
 }
+
+// ─── show --dump ──────────────────────────────────────────────────────────────
+
+/// `yconn show --dump` outputs valid YAML containing all connection names and user keys.
+#[test]
+fn show_dump_outputs_merged_config_as_yaml() {
+    let env = TestEnv::new();
+    env.write_project_config(
+        "connections",
+        "connections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Production\n  staging:\n    host: 10.0.0.2\n    user: admin\n    auth: password\n    description: Staging\nusers:\n  t1user: alice\n  mybot: botuser\n",
+    );
+    let out = env.run(&["show", "--dump"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("connections:"), "missing connections: key");
+    assert!(stdout.contains("prod:"), "missing prod entry");
+    assert!(stdout.contains("staging:"), "missing staging entry");
+    assert!(stdout.contains("10.0.0.1"), "missing prod host");
+    assert!(stdout.contains("users:"), "missing users: key");
+    assert!(stdout.contains("t1user:"), "missing t1user key");
+    assert!(stdout.contains("mybot:"), "missing mybot key");
+}
+
+/// `yconn show --dump` with no config outputs empty-but-valid YAML.
+#[test]
+fn show_dump_empty_config_produces_valid_yaml() {
+    let env = TestEnv::new();
+    let out = env.run(&["show", "--dump"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("connections:"), "missing connections: key");
+    assert!(stdout.contains("users:"), "missing users: key");
+}
+
+/// `yconn show <name>` still works (name is still accepted).
+#[test]
+fn show_name_still_works_after_dump_flag_added() {
+    let env = TestEnv::new();
+    env.write_project_config(
+        "connections",
+        "connections:\n  web:\n    host: 1.2.3.4\n    user: ops\n    auth: password\n    description: Web\n",
+    );
+    let out = env.run(&["show", "web"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("Connection: web"));
+}
+
+/// `yconn show` with neither name nor --dump exits with an error.
+#[test]
+fn show_no_args_errors() {
+    let env = TestEnv::new();
+    let out = env.run(&["show"]);
+    assert!(!out.status.success(), "expected non-zero exit");
+}
+
+/// `yconn show <name> --dump` is rejected (mutually exclusive).
+#[test]
+fn show_name_and_dump_together_errors() {
+    let env = TestEnv::new();
+    env.write_project_config(
+        "connections",
+        "connections:\n  web:\n    host: 1.2.3.4\n    user: ops\n    auth: password\n    description: Web\n",
+    );
+    let out = env.run(&["show", "web", "--dump"]);
+    assert!(!out.status.success(), "expected non-zero exit");
+}

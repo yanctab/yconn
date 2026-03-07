@@ -155,7 +155,7 @@
   - Reuse: src/commands/ssh_config.rs:render_ssh_config (the four format strings on lines 63–75 are the only change sites)
   - Risks: none — pure string literal change with no logic impact; verify no external tooling parses the `# yconn:` prefix from generated files before stripping it
 
-- [ ] **Add `yconn show --dump` flag to print the fully merged config** [cli] S
+- [x] **Add `yconn show --dump` flag to print the fully merged config** [cli] S
   - Acceptance: (1) `yconn show --dump` (no connection name required) prints the fully merged `connections:` and `users:` maps to stdout as valid YAML after all layers have been loaded and merged — active entries only, no shadowed rows; (2) the output is machine-readable YAML with a top-level `connections:` key (each entry serialised with all its resolved fields) and a top-level `users:` key (each entry as a flat `key: value` map); (3) `yconn show --dump` and `yconn show <name>` are mutually exclusive — if both a name and `--dump` are supplied clap surfaces an error; (4) the `--dump` flag is only valid on the `show` subcommand, not global; (5) unit tests in `src/commands/show.rs` cover: dump with connections only, dump with users only, dump with both, dump with empty config; (6) a functional test in `tests/functional.rs` writes a project config with at least two connections and a users map, runs `yconn show --dump`, and asserts stdout is valid YAML containing all connection names and user keys; `make test` passes
   - Depends on: Remove `yconn:` prefix from SSH config comments
   - Modify: src/cli/mod.rs, src/main.rs, src/commands/show.rs, src/display/mod.rs, tests/functional.rs
