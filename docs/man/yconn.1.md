@@ -104,6 +104,40 @@ keys to be pre-baked into an image rather than distributed to developer machines
 : Print the active group name and the resolved config file paths for each layer,
   indicating which files were found.
 
+**ssh-config**
+: Read all active connections (respecting the active group lock and layer merge,
+  identical to **yconn list**) and write one `Host` block per non-wildcard,
+  non-range connection to `~/.ssh/yconn-connections`. Updates `~/.ssh/config`
+  idempotently by prepending `Include ~/.ssh/yconn-connections` if the line is
+  not already present. Wildcard and range-pattern connection names are skipped
+  with a comment. A summary line is printed showing the count of Host blocks
+  written and the output file path.
+
+  Flags:
+
+  - **--dry-run** — print the generated file content and the `~/.ssh/config`
+    change to stdout without writing any files.
+  - **--user** *KEY:VALUE* — override or add a `users:` map entry for this
+    invocation (repeatable). Mutually exclusive with **--skip-user**.
+  - **--skip-user** — omit `User` lines from all generated Host blocks.
+    Mutually exclusive with **--user**.
+
+**user show**
+: List all user key/value entries across all config layers. Displays KEY, VALUE,
+  and SOURCE columns. Shadowed entries (overridden by a higher-priority layer)
+  are shown dimmed with a `[shadowed]` tag. Use this to inspect what `${key}`
+  templates will expand to.
+
+**user add**
+: Interactive wizard that prompts for a key and value and writes the entry to the
+  `users:` section of the target layer's config file. Defaults to the user layer
+  (`~/.config/yconn/connections.yaml`). Use **--layer** to target a specific layer.
+
+**user edit** *KEY*
+: Open the source config file that contains the named user entry in **$EDITOR**.
+  Defaults to the active (highest-priority) entry. Use **--layer** to target a
+  specific layer.
+
 # OPTIONS
 
 **--all**
@@ -120,14 +154,15 @@ keys to be pre-baked into an image rather than distributed to developer machines
 : Print version and exit.
 
 The **--layer** *system*|*user*|*project* flag applies only to **add**, **edit**,
-and **remove** — it is a per-subcommand flag, not a global option.
+**remove**, **user add**, and **user edit** — it is a per-subcommand flag, not a
+global option.
 
 # CONFIGURATION
 
 ## File format
 
-Each config file is a YAML document with an optional **docker** block and a
-**connections** map:
+Each config file is a YAML document with an optional **docker** block, an
+optional **users** map, and a **connections** map:
 
 ```yaml
 version: 1
@@ -138,10 +173,13 @@ docker:
   args:
     - "--network=host"
 
+users:
+  t1user: "t1extmzigher"   # referenced as ${t1user} in connection user fields
+
 connections:
   prod-web:
     host: 10.0.1.50
-    user: deploy
+    user: ${t1user}   # expands to "t1extmzigher" at connect time
     port: 22          # optional, defaults to 22
     auth: key         # "key" | "password"
     key: ~/.ssh/prod_deploy_key
@@ -163,6 +201,28 @@ connections:
     key: ~/.ssh/ops_key
     description: "App servers 1 through 20"
 ```
+
+## `users:` map and `${key}` template expansion
+
+The optional top-level **users:** map defines named string entries that can be referenced as
+`${key}` templates in connection `user` fields. Layer merge follows the same project > user >
+system priority as connections.
+
+**Expansion rules** (applied at connect time and when generating SSH config):
+
+1. Named entry lookup: `${key}` is replaced with the matching value from the merged `users:` map.
+2. `${user}` env-var fallback: the special token `${user}` (lowercase literal) is NOT looked up
+   in the `users:` map — it expands from the `$USER` environment variable. If `$USER` is unset,
+   the literal `${user}` is passed through unchanged.
+3. Unresolved templates: if a `${key}` token cannot be resolved, a warning is emitted to stderr
+   and the literal token is passed through unchanged (non-blocking).
+
+**`yconn show`** displays raw unexpanded field values — templates are never expanded in show output.
+
+**Per-invocation overrides:** both **yconn connect** and **yconn ssh-config** accept
+**--user** *KEY:VALUE* (repeatable) to override or add entries in the `users:` map for that
+invocation only. **yconn ssh-config** also accepts **--skip-user** to omit `User` lines from
+all generated Host blocks entirely. **--user** and **--skip-user** are mutually exclusive.
 
 ## Wildcard and range patterns
 
@@ -266,13 +326,45 @@ yconn init --location dotfile     # creates .connections.yaml
 yconn init --location plain       # creates connections.yaml
 ```
 
+Generate SSH config (writes Host blocks to `~/.ssh/yconn-connections`):
+
+```
+yconn ssh-config
+yconn ssh-config --dry-run
+yconn ssh-config --user t1user:alice
+yconn ssh-config --skip-user
+```
+
+Manage user key/value entries:
+
+```
+yconn user show
+yconn user add
+yconn user add --layer project
+yconn user edit t1user
+```
+
+Connect with a per-invocation user override:
+
+```
+yconn connect prod-web --user t1user:alice
+yconn connect staging --user user:alice
+```
+
 # FILES
 
 `~/.config/yconn/session.yml`
 : User session state — active group.
 
 `~/.config/yconn/connections.yaml`
-: User-level connection config. May reference local key paths.
+: User-level connection config. May reference local key paths and `users:` entries.
+
+`~/.ssh/yconn-connections`
+: Generated SSH Host blocks written by **yconn ssh-config**. Included from `~/.ssh/config`.
+
+`~/.ssh/config`
+: Standard SSH client config. **yconn ssh-config** prepends an `Include ~/.ssh/yconn-connections`
+  line if absent.
 
 `/etc/yconn/connections.yaml`
 : System-level connection config. Must not contain credentials.

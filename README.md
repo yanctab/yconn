@@ -80,8 +80,14 @@ yconn group use work
 | `yconn group use <name>` | Set the active group |
 | `yconn group clear` | Revert to the default group (`connections`) |
 | `yconn group current` | Print the active group name and resolved config file paths |
+| `yconn ssh-config` | Write Host blocks to `~/.ssh/yconn-connections` and update `~/.ssh/config` |
+| `yconn user show` | List all user key/value entries across all layers |
+| `yconn user add` | Interactive wizard to add a user entry to a chosen layer |
+| `yconn user edit <key>` | Open the source config file for a user entry in `$EDITOR` |
 
-Global flags: `--layer system|user|project`, `--all`, `--verbose`, `--no-color`
+Global flags: `--all`, `--verbose`
+
+Per-subcommand flags: `--layer system|user|project` (for `add`, `edit`, `remove`, `user add`, `user edit`)
 
 ## Development
 

@@ -50,8 +50,8 @@ commands and examples.
 
 ## Config file format
 
-Each config file is a YAML document with a `version` key, an optional `docker` block, and a
-`connections` map.
+Each config file is a YAML document with a `version` key, an optional `docker` block, an
+optional `users` map, and a `connections` map.
 
 ```yaml
 version: 1
@@ -63,6 +63,9 @@ docker:
     - "--network=host"
     - "--env=MY_VAR=value"
     - "--volume=/opt/certs:/opt/certs:ro"
+
+users:
+  t1user: "t1extmzigher"   # referenced as ${t1user} in connection user fields
 
 connections:
   prod-web:
@@ -166,6 +169,96 @@ patterns. The `host:` field is then resolved:
 - Quote the YAML key when the name contains `[` to avoid YAML parse issues: `"server[1..10]"`.
 - An empty range (`end < start`) never matches any input.
 - Only a numeric suffix is matched — `server01` matches `server[1..10]` (suffix `01` parses to `1`).
+
+---
+
+## `users:` map and template expansion
+
+The optional top-level `users:` map defines named string entries that can be referenced as
+`${key}` templates inside connection `user` fields.
+
+```yaml
+version: 1
+
+users:
+  t1user: "t1extmzigher"
+  devops: "ops-team"
+
+connections:
+  prod-web:
+    host: 10.0.1.50
+    user: ${t1user}        # expands to "t1extmzigher" at connect time
+    auth: key
+    key: ~/.ssh/prod_key
+    description: "Production web server"
+
+  staging:
+    host: staging.internal
+    user: ${user}          # expands to the $USER environment variable
+    auth: password
+    description: "Staging server"
+```
+
+### Layer merge for `users:`
+
+The `users:` map follows the same project > user > system priority as connections. A key defined
+in a higher-priority layer shadows the same key in lower layers.
+
+### `${key}` template expansion rules
+
+When `yconn connect` or `yconn ssh-config` is invoked, the `user` field of each connection is
+scanned for `${key}` tokens:
+
+1. **Named entry lookup** — if `key` matches an entry in the merged `users:` map, the token is
+   replaced with that entry's value.
+2. **`${user}` env-var fallback** — the special token `${user}` (literal lowercase `user`) is
+   NOT looked up in the `users:` map. Instead, it is replaced with the value of the `$USER`
+   environment variable. If `$USER` is unset, the literal `${user}` is passed through unchanged.
+3. **Unresolved templates** — if a `${key}` token remains after both steps (no map entry, no env
+   var match), a warning is emitted to stderr and the literal token is passed through unchanged.
+   This is non-blocking.
+
+Named entry lookup always occurs before `${user}` env-var expansion. To override `${user}` for
+a single invocation, use `--user user:<name>` (see below).
+
+### `yconn show` displays raw values
+
+`yconn show <name>` prints the `user` field value as-is, without any template expansion. The
+raw config value (e.g. `${t1user}`) is shown, not the expanded value.
+
+### Per-invocation overrides: `--user KEY:VALUE`
+
+Both `yconn connect` and `yconn ssh-config` accept `--user KEY:VALUE` (repeatable) to override
+or add entries in the `users:` map for that invocation only:
+
+```bash
+# Connect as "alice" regardless of what ${t1user} resolves to in config
+yconn connect prod-web --user t1user:alice
+
+# Override the ${user} env-var expansion for this invocation
+yconn connect staging --user user:alice
+
+# Apply multiple overrides at once
+yconn connect prod-web --user t1user:alice --user devops:bob
+```
+
+The `yconn ssh-config` command also supports `--skip-user` to omit `User` lines entirely from
+all generated Host blocks. `--skip-user` and `--user` are mutually exclusive.
+
+### Managing `users:` entries
+
+```bash
+# List all user entries across all layers
+yconn user show
+
+# Add a user entry interactively (defaults to user layer)
+yconn user add
+yconn user add --layer project
+
+# Open the source file for a named entry in $EDITOR
+yconn user edit t1user
+yconn user edit t1user --layer user
+```
 
 ---
 
