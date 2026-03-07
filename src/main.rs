@@ -10,7 +10,7 @@ mod docker;
 mod group;
 mod security;
 
-use cli::{Cli, Commands, GroupCommands};
+use cli::{Cli, Commands, GroupCommands, UserCommands};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -48,9 +48,13 @@ fn main() -> Result<()> {
             }
             GroupCommands::Clear => commands::group::clear(),
         },
-        Commands::Connect { name } => {
+        Commands::Connect {
+            name,
+            user_overrides,
+        } => {
             let cfg = load_and_warn(&renderer, verbose)?;
-            commands::connect::run(&cfg, &renderer, &name, verbose)
+            let overrides = parse_user_overrides(&user_overrides)?;
+            commands::connect::run(&cfg, &renderer, &name, verbose, &overrides)
         }
         Commands::Add { layer } => commands::add::run(layer),
         Commands::Edit { name, layer } => {
@@ -62,13 +66,52 @@ fn main() -> Result<()> {
             commands::remove::run(&cfg, &renderer, &name, layer)
         }
         Commands::Init { location } => commands::init::run(location),
-        Commands::SshConfig { dry_run } => {
+        Commands::SshConfig {
+            dry_run,
+            user_overrides,
+            skip_user,
+        } => {
             let cfg = load_and_warn(&renderer, verbose)?;
+            let overrides = parse_user_overrides(&user_overrides)?;
             let home = dirs::home_dir()
                 .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?;
-            commands::ssh_config::run_generate(&cfg.connections, &renderer, dry_run, &home)
+            commands::ssh_config::run_generate(
+                &cfg, &renderer, dry_run, &home, &overrides, skip_user,
+            )
+        }
+        Commands::User { subcommand } => match subcommand {
+            UserCommands::Show => {
+                let cfg = load_and_warn(&renderer, verbose)?;
+                commands::user::show(&cfg, &renderer)
+            }
+            UserCommands::Add { layer } => commands::user::add(layer),
+            UserCommands::Edit { key, layer } => {
+                let cfg = load_and_warn(&renderer, verbose)?;
+                commands::user::edit(&cfg, &key, layer)
+            }
+        },
+    }
+}
+
+/// Parse `--user key:value` CLI strings into a `HashMap<String, String>`.
+///
+/// Each element must contain exactly one `:` separator. If any element is
+/// malformed, returns an error with a clear message.
+fn parse_user_overrides(
+    overrides: &[String],
+) -> anyhow::Result<std::collections::HashMap<String, String>> {
+    let mut map = std::collections::HashMap::new();
+    for s in overrides {
+        match s.split_once(':') {
+            Some((key, value)) => {
+                map.insert(key.to_string(), value.to_string());
+            }
+            None => {
+                anyhow::bail!("--user value '{}' is invalid: expected format KEY:VALUE", s);
+            }
         }
     }
+    Ok(map)
 }
 
 /// Load config and surface any security warnings through the renderer.

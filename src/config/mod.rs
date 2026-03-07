@@ -28,6 +28,8 @@ struct RawFile {
     docker: Option<RawDocker>,
     #[serde(default)]
     connections: HashMap<String, RawConn>,
+    #[serde(default)]
+    users: HashMap<String, String>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -112,6 +114,17 @@ pub struct Connection {
     pub shadowed: bool,
 }
 
+/// A resolved user entry from the `users:` map, with source tracking.
+#[derive(Clone, Debug)]
+pub struct UserEntry {
+    pub key: String,
+    pub value: String,
+    pub layer: Layer,
+    pub source_path: PathBuf,
+    /// `true` if a higher-priority layer defines a user entry with the same key.
+    pub shadowed: bool,
+}
+
 /// The resolved `docker` block from the highest-priority non-user layer.
 #[derive(Clone, Debug)]
 pub struct DockerConfig {
@@ -142,6 +155,11 @@ pub struct LoadedConfig {
     /// Active + shadowed connections interleaved for `--all` display.
     /// Shadowed entries appear immediately after their active counterpart.
     pub all_connections: Vec<Connection>,
+    /// Merged user entries from the `users:` map across all layers.
+    /// Active entries only (one per key, highest-priority layer wins).
+    pub users: HashMap<String, UserEntry>,
+    /// Active + shadowed user entries interleaved for `user show --all` display.
+    pub all_users: Vec<UserEntry>,
     /// Resolved docker config (project or system only; user layer ignored).
     pub docker: Option<DockerConfig>,
     /// Status of each layer in priority order [project, user, system].
@@ -324,6 +342,104 @@ impl LoadedConfig {
         self.group.as_deref()
     }
 
+    /// Expand `${<key>}` templates in a `user` field using the merged users map
+    /// plus any inline overrides supplied at invocation time.
+    ///
+    /// Resolution order (one level only — no recursive expansion):
+    /// 1. Named entries: for each `${key}` token where `key != "user"`, look up
+    ///    `key` in `inline_overrides` first, then `self.users`. Replace if found.
+    /// 2. `${user}` (lowercase, literal): replaced with the `$USER` environment
+    ///    variable. If `$USER` is unset, `${user}` passes through unchanged.
+    ///    `--user user:<name>` in `inline_overrides` overrides this step too.
+    ///
+    /// When a template token remains unresolved after both steps, a warning
+    /// message is returned in the `Vec<String>` so the caller can emit it.
+    ///
+    /// `inline_overrides` is a `HashMap<String, String>` of `key → value` pairs
+    /// from `--user key:value` CLI flags. It shadows `self.users` for the
+    /// duration of this call only.
+    pub fn expand_user_field(
+        &self,
+        field: &str,
+        inline_overrides: &HashMap<String, String>,
+    ) -> (String, Vec<String>) {
+        let mut result = field.to_string();
+        let mut warnings: Vec<String> = Vec::new();
+
+        // Step 1: resolve named entries (everything except the literal `${user}`).
+        // We scan for ${...} tokens and replace any whose key is in the users map
+        // (via inline_overrides or self.users), skipping the key "user" so it
+        // is handled separately in step 2.
+        let mut i = 0;
+        let chars: Vec<char> = result.chars().collect();
+        let mut new_result = String::new();
+        let s = result.clone();
+        let bytes = s.as_bytes();
+        let len = bytes.len();
+        while i < len {
+            // Look for "${"
+            if i + 1 < len && bytes[i] == b'$' && bytes[i + 1] == b'{' {
+                if let Some(close) = s[i + 2..].find('}') {
+                    let key = &s[i + 2..i + 2 + close];
+                    // Skip the literal `${user}` token — handled in step 2.
+                    if key == "user" {
+                        new_result.push_str("${user}");
+                        i += 2 + close + 1;
+                        continue;
+                    }
+                    // Look up key in inline_overrides, then self.users.
+                    if let Some(val) = inline_overrides
+                        .get(key)
+                        .map(|s| s.as_str())
+                        .or_else(|| self.users.get(key).map(|e| e.value.as_str()))
+                    {
+                        new_result.push_str(val);
+                    } else {
+                        // Unresolved — pass through and warn.
+                        let token = format!("${{{key}}}");
+                        warnings.push(format!(
+                            "user field template '{}' is unresolved: no users: entry for key '{key}'",
+                            token
+                        ));
+                        new_result.push_str(&token);
+                    }
+                    i += 2 + close + 1;
+                    continue;
+                }
+            }
+            // Not a template token — copy the byte literally.
+            new_result.push(bytes[i] as char);
+            i += 1;
+        }
+        // Suppress the unused variable warning from chars above.
+        let _ = chars;
+        result = new_result;
+
+        // Step 2: resolve `${user}` using inline_overrides["user"] or $USER env var.
+        if result.contains("${user}") {
+            // Check inline_overrides first (--user user:<name> overrides env var).
+            if let Some(val) = inline_overrides.get("user") {
+                result = result.replace("${user}", val);
+            } else {
+                match std::env::var("USER") {
+                    Ok(env_user) => {
+                        result = result.replace("${user}", &env_user);
+                    }
+                    Err(_) => {
+                        // $USER is unset — pass through unchanged.
+                        warnings.push(
+                            "user field contains '${user}' but $USER env var is unset; \
+                             passing through unchanged"
+                                .to_string(),
+                        );
+                    }
+                }
+            }
+        }
+
+        (result, warnings)
+    }
+
     /// Return unique group values present across all active connections.
     /// Used by `yconn group list`.
     pub fn discover_groups(&self) -> Vec<crate::group::GroupEntry> {
@@ -382,6 +498,9 @@ pub fn load_from(cwd: &Path) -> Result<LoadedConfig> {
 /// One element of the three-layer raw-connection array: (connections, layer, source path).
 type RawLayer = (Vec<(String, RawConn)>, Layer, PathBuf);
 
+/// One element of the three-layer raw-users array: (entries, layer, source path).
+type RawUserLayer = (Vec<(String, String)>, Layer, PathBuf);
+
 /// Core load logic with all paths explicit — used directly by tests and
 /// command-layer integration tests.
 ///
@@ -426,6 +545,26 @@ pub(crate) fn load_impl(
         (sys.connections, Layer::System, system_file.clone()),
     ];
     let (connections, all_connections) = merge_connections(&raw_layers);
+
+    // ── Merge users ──────────────────────────────────────────────────────────
+    let user_layers: [RawUserLayer; 3] = [
+        (
+            proj.users,
+            Layer::Project,
+            project_file
+                .clone()
+                .unwrap_or_else(|| PathBuf::from(".yconn")),
+        ),
+        (
+            user.users,
+            Layer::User,
+            user_file
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("~/.config/yconn")),
+        ),
+        (sys.users, Layer::System, system_file.clone()),
+    ];
+    let (users, all_users) = merge_users(&user_layers);
 
     // ── Resolve docker (project > system; user ignored with warning) ─────────
     if user.docker_present {
@@ -472,6 +611,8 @@ pub(crate) fn load_impl(
     Ok(LoadedConfig {
         connections,
         all_connections,
+        users,
+        all_users,
         docker,
         layers,
         project_dir,
@@ -509,6 +650,7 @@ struct LayerData {
     found: bool,
     count: usize,
     connections: Vec<(String, RawConn)>,
+    users: Vec<(String, String)>,
     docker: Option<RawDocker>,
     /// Whether a docker block was present (even if it was suppressed).
     docker_present: bool,
@@ -528,6 +670,7 @@ fn load_layer(
                 found: false,
                 count: 0,
                 connections: Vec::new(),
+                users: Vec::new(),
                 docker: None,
                 docker_present: false,
             })
@@ -562,11 +705,13 @@ fn load_layer(
 
     let count = raw.connections.len();
     let connections: Vec<(String, RawConn)> = raw.connections.into_iter().collect();
+    let users: Vec<(String, String)> = raw.users.into_iter().collect();
 
     Ok(LayerData {
         found: true,
         count,
         connections,
+        users,
         docker,
         docker_present,
     })
@@ -688,6 +833,55 @@ fn build_connection(
         source_path: path.to_path_buf(),
         shadowed,
     }
+}
+
+/// Merge `users:` maps from three layers (project, user, system — highest first).
+///
+/// Returns `(active, all)`:
+/// - `active`: one entry per key, from the highest-priority layer (as a HashMap).
+/// - `all`: active entries with shadowed entries interleaved immediately after.
+fn merge_users(layers: &[RawUserLayer; 3]) -> (HashMap<String, UserEntry>, Vec<UserEntry>) {
+    // Collect all entries in priority order.
+    let mut all_raw: Vec<UserEntry> = Vec::new();
+    for (entries, layer, path) in layers {
+        for (key, value) in entries {
+            all_raw.push(UserEntry {
+                key: key.clone(),
+                value: value.clone(),
+                layer: *layer,
+                source_path: path.clone(),
+                shadowed: false,
+            });
+        }
+    }
+
+    // Active: first occurrence per key.
+    let mut seen: HashMap<String, ()> = HashMap::new();
+    let mut active: HashMap<String, UserEntry> = HashMap::new();
+    let mut active_order: Vec<String> = Vec::new();
+    for entry in &all_raw {
+        if !seen.contains_key(&entry.key) {
+            seen.insert(entry.key.clone(), ());
+            active.insert(entry.key.clone(), entry.clone());
+            active_order.push(entry.key.clone());
+        }
+    }
+
+    // All: active entries with their shadowed versions interleaved.
+    let mut all: Vec<UserEntry> = Vec::new();
+    for key in &active_order {
+        let active_entry = active.get(key).unwrap();
+        all.push(active_entry.clone());
+        for raw_entry in &all_raw {
+            if raw_entry.key == *key && raw_entry.layer != active_entry.layer {
+                let mut shadowed = raw_entry.clone();
+                shadowed.shadowed = true;
+                all.push(shadowed);
+            }
+        }
+    }
+
+    (active, all)
 }
 
 fn docker_config(raw: RawDocker, layer: Layer, path: &Path) -> DockerConfig {

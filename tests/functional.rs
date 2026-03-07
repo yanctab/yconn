@@ -1029,3 +1029,180 @@ fn ssh_config_generate_dry_run_prints_to_stdout_no_files_written() {
         "dry-run must not write yconn-connections"
     );
 }
+
+/// `yconn ssh-config --user user:alice` renders `User alice` in all blocks.
+#[test]
+fn ssh_config_user_override_renders_expanded_user_line() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: \"${user}\"\n    auth: password\n    description: test\n",
+    );
+
+    let out = env.run(&["ssh-config", "--dry-run", "--user", "user:alice"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("    User alice"),
+        "expected 'User alice' in output, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("${user}"),
+        "unresolved template must not appear: {stdout}"
+    );
+}
+
+/// `yconn ssh-config --skip-user` renders no User line in any block.
+#[test]
+fn ssh_config_skip_user_omits_user_lines() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: test\n",
+    );
+
+    let out = env.run(&["ssh-config", "--dry-run", "--skip-user"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stdout.contains("    User "),
+        "User lines must be omitted with --skip-user, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Host srv"),
+        "Host block must still appear: {stdout}"
+    );
+}
+
+// ─── yconn user ──────────────────────────────────────────────────────────────
+
+/// `yconn user show` lists all user entries across layers with correct source.
+#[test]
+fn user_show_lists_entries_with_source() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "version: 1\n\nusers:\n  t1user: \"t1extmzigher\"\n  devkey: \"devval\"\n",
+    );
+
+    let out = env.run(&["user", "show"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("t1user"),
+        "expected t1user in output: {stdout}"
+    );
+    assert!(
+        stdout.contains("t1extmzigher"),
+        "expected value in output: {stdout}"
+    );
+    assert!(
+        stdout.contains("devkey"),
+        "expected devkey in output: {stdout}"
+    );
+    assert!(
+        stdout.contains("user"),
+        "expected layer label 'user' in output: {stdout}"
+    );
+}
+
+/// `yconn user add` round-trip: add an entry then `yconn user show` reflects it.
+#[test]
+fn user_add_round_trip_show_reflects_new_entry() {
+    let env = TestEnv::new();
+
+    // Add a user entry interactively.
+    let out = env.run_with_stdin(&["user", "add"], "newkey\nnewval\n");
+    TestEnv::assert_ok(&out);
+
+    // Confirm `user show` returns the new entry.
+    let out2 = env.run(&["user", "show"]);
+    TestEnv::assert_ok(&out2);
+
+    let stdout = String::from_utf8_lossy(&out2.stdout);
+    assert!(
+        stdout.contains("newkey"),
+        "expected newkey in user show output: {stdout}"
+    );
+    assert!(
+        stdout.contains("newval"),
+        "expected newval in user show output: {stdout}"
+    );
+}
+
+// ─── yconn connect with user expansion ───────────────────────────────────────
+
+/// `yconn connect` with `${user}` and `--user user:alice` receives `alice@host`.
+#[test]
+fn connect_user_override_expands_dollar_user() {
+    let env = TestEnv::new();
+    let key = env.write_key("id_rsa");
+
+    env.write_user_config(
+        "connections",
+        &format!(
+            "connections:\n  srv:\n    host: myhost\n    user: \"${{user}}\"\n    auth: key\n    key: {key}\n    description: test\n"
+        ),
+    );
+
+    let out = env.run_in_container(&["connect", "--user", "user:alice", "srv"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("alice@myhost"),
+        "expected alice@myhost in SSH args, got: {stdout}"
+    );
+}
+
+/// `yconn connect` with `${t1user}` from `users:` map receives `ops@host`.
+#[test]
+fn connect_named_users_map_entry_expands_in_user_field() {
+    let env = TestEnv::new();
+    let key = env.write_key("id_rsa");
+
+    env.write_user_config(
+        "connections",
+        &format!(
+            "users:\n  t1user: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${{t1user}}\"\n    auth: key\n    key: {key}\n    description: test\n"
+        ),
+    );
+
+    let out = env.run_in_container(&["connect", "srv"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("ops@myhost"),
+        "expected ops@myhost in SSH args, got: {stdout}"
+    );
+}
+
+/// `yconn connect --user t1user:alice` overrides config-loaded users: entry.
+#[test]
+fn connect_user_override_shadows_config_users_entry() {
+    let env = TestEnv::new();
+    let key = env.write_key("id_rsa");
+
+    env.write_user_config(
+        "connections",
+        &format!(
+            "users:\n  t1user: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${{t1user}}\"\n    auth: key\n    key: {key}\n    description: test\n"
+        ),
+    );
+
+    let out = env.run_in_container(&["connect", "--user", "t1user:alice", "srv"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("alice@myhost"),
+        "expected alice@myhost (override), got: {stdout}"
+    );
+}

@@ -59,6 +59,14 @@ pub struct ConfigStatus {
     pub docker: Option<DockerInfo>,
 }
 
+/// A row in the `yconn user show` output table.
+pub struct UserRow {
+    pub key: String,
+    pub value: String,
+    pub source: String,
+    pub shadowed: bool,
+}
+
 /// A row in the `yconn group list` output table.
 pub struct GroupRow {
     pub name: String,
@@ -294,6 +302,55 @@ impl Renderer {
         out
     }
 
+    // ── user list ─────────────────────────────────────────────────────────────
+
+    fn render_user_list(&self, rows: &[UserRow]) -> String {
+        const HEADERS: [&str; 3] = ["KEY", "VALUE", "SOURCE"];
+        const GAP: &str = "   ";
+
+        let mut col = [
+            HEADERS[0].len(),
+            HEADERS[1].len(),
+            0usize, // source — not padded (last col)
+        ];
+        for row in rows {
+            col[0] = col[0].max(row.key.len());
+            col[1] = col[1].max(row.value.len());
+        }
+
+        let header_cells: Vec<String> = vec![
+            pad(HEADERS[0], col[0]),
+            pad(HEADERS[1], col[1]),
+            HEADERS[2].to_string(),
+        ];
+        let header_plain = header_cells.join(GAP);
+        let separator: String = "─".repeat(header_plain.len());
+
+        let mut out = String::new();
+        out.push_str(&self.maybe_bold(&header_plain));
+        out.push('\n');
+        out.push_str(&separator);
+        out.push('\n');
+
+        for row in rows {
+            let source = if row.shadowed {
+                format!("{} [shadowed]", row.source)
+            } else {
+                row.source.clone()
+            };
+            let cells: Vec<String> = vec![pad(&row.key, col[0]), pad(&row.value, col[1]), source];
+            let line = cells.join(GAP);
+            if row.shadowed {
+                out.push_str(&self.maybe_dim(&line));
+            } else {
+                out.push_str(&line);
+            }
+            out.push('\n');
+        }
+
+        out
+    }
+
     // ── group list ────────────────────────────────────────────────────────────
 
     fn render_group_list(&self, groups: &[GroupRow]) -> String {
@@ -386,6 +443,23 @@ impl Renderer {
     /// Print the config status block (`yconn config`).
     pub fn config_status(&self, status: &ConfigStatus) {
         print!("{}", self.render_config_status(status));
+    }
+
+    /// Print the user list table (`yconn user show`).
+    ///
+    /// Accepts a slice of [`crate::config::UserEntry`] directly to avoid
+    /// requiring callers to construct [`UserRow`] manually.
+    pub fn user_list(&self, entries: &[crate::config::UserEntry]) {
+        let rows: Vec<UserRow> = entries
+            .iter()
+            .map(|e| UserRow {
+                key: e.key.clone(),
+                value: e.value.clone(),
+                source: format!("{} ({})", e.layer.label(), e.source_path.display()),
+                shadowed: e.shadowed,
+            })
+            .collect();
+        print!("{}", self.render_user_list(&rows));
     }
 
     /// Print the group list table (`yconn group list`).

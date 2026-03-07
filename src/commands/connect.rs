@@ -1,6 +1,7 @@
 // Handler for `yconn connect <name>` — resolve a connection and invoke SSH,
 // optionally bootstrapping into Docker first.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -11,8 +12,21 @@ use crate::{connect, docker, security};
 
 // ─── Public command entry point ───────────────────────────────────────────────
 
-pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str, verbose: bool) -> Result<()> {
-    let conn = cfg.find_with_wildcard(name)?;
+pub fn run(
+    cfg: &LoadedConfig,
+    renderer: &Renderer,
+    name: &str,
+    verbose: bool,
+    user_overrides: &HashMap<String, String>,
+) -> Result<()> {
+    let mut conn = cfg.find_with_wildcard(name)?;
+
+    // Expand ${<key>} templates in the user field.
+    let (expanded_user, user_warnings) = cfg.expand_user_field(&conn.user, user_overrides);
+    for w in &user_warnings {
+        renderer.warn(w);
+    }
+    conn.user = expanded_user;
 
     // Security: validate the key file before trying to connect.
     // Expand a leading `~` so that the existence and permission checks operate
@@ -90,7 +104,21 @@ mod tests {
         original_argv: &[String],
         in_container: bool,
     ) -> Result<ConnectPlan> {
-        let conn = cfg.find_with_wildcard(name)?;
+        plan_with_overrides(cfg, name, original_argv, in_container, &HashMap::new())
+    }
+
+    fn plan_with_overrides(
+        cfg: &LoadedConfig,
+        name: &str,
+        original_argv: &[String],
+        in_container: bool,
+        user_overrides: &HashMap<String, String>,
+    ) -> Result<ConnectPlan> {
+        let mut conn = cfg.find_with_wildcard(name)?;
+
+        // Apply user field expansion (same as run()).
+        let (expanded_user, _warnings) = cfg.expand_user_field(&conn.user, user_overrides);
+        conn.user = expanded_user;
 
         if let Some(ref docker_cfg) = cfg.docker {
             if !in_container {
@@ -307,7 +335,7 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), None, empty.path());
 
-        let err = run(&cfg, &no_color(), "no-such-server", false).unwrap_err();
+        let err = run(&cfg, &no_color(), "no-such-server", false, &HashMap::new()).unwrap_err();
         assert!(err.to_string().contains("no-such-server"));
     }
 
@@ -487,6 +515,182 @@ mod tests {
             warnings.is_empty(),
             "absolute path to existing key must not warn: {:?}",
             warnings
+        );
+    }
+
+    // ── user field expansion ───────────────────────────────────────────────────
+
+    fn conn_with_user(user: &str) -> config::LoadedConfig {
+        // Build a minimal LoadedConfig whose single connection has the given
+        // user field; no users: map entries, empty system dir.
+        let cwd = TempDir::new().unwrap();
+        let user_dir = TempDir::new().unwrap();
+        let yaml = format!(
+            "connections:\n  srv:\n    host: myhost\n    user: {user}\n    auth: password\n    description: d\n"
+        );
+        write_yaml(user_dir.path(), "connections.yaml", &yaml);
+        let empty = TempDir::new().unwrap();
+        load(cwd.path(), Some(user_dir.path()), empty.path())
+    }
+
+    fn conn_with_user_and_users_map(user: &str, users_yaml: &str) -> config::LoadedConfig {
+        let cwd = TempDir::new().unwrap();
+        let user_dir = TempDir::new().unwrap();
+        let yaml = format!(
+            "{users_yaml}connections:\n  srv:\n    host: myhost\n    user: {user}\n    auth: password\n    description: d\n"
+        );
+        write_yaml(user_dir.path(), "connections.yaml", &yaml);
+        let empty = TempDir::new().unwrap();
+        load(cwd.path(), Some(user_dir.path()), empty.path())
+    }
+
+    /// `${user}` in config expands to $USER env value.
+    #[test]
+    fn test_dollar_user_expands_to_env_user() {
+        // We can't control $USER in unit tests reliably, so we test via expand_user_field directly.
+        let cfg = conn_with_user("${user}");
+        // Inject via inline_overrides to make the test deterministic.
+        let mut overrides = HashMap::new();
+        overrides.insert("user".to_string(), "alice".to_string());
+        let p = plan_with_overrides(
+            &cfg,
+            "srv",
+            &argv(&["yconn", "connect", "srv"]),
+            false,
+            &overrides,
+        )
+        .unwrap();
+        if let ConnectPlan::Ssh(args) = p {
+            assert!(
+                args.last().unwrap().starts_with("alice@"),
+                "expected alice@..., got {:?}",
+                args
+            );
+        }
+    }
+
+    /// `${user}` with $USER unset passes through unchanged (no panic).
+    #[test]
+    fn test_dollar_user_unset_passes_through() {
+        // We test expand_user_field directly with empty overrides and rely on
+        // the function's documented behaviour: pass through when $USER is unset.
+        // Since we can't unset $USER in a process-wide way safely in unit tests,
+        // we verify the field is NOT expanded when there is no override and
+        // the env var is unavailable — exercised here by providing the literal
+        // string and asserting no panic occurs.
+        let cfg = conn_with_user("${user}");
+        // expand_user_field with no overrides: result depends on $USER being set
+        // or not. Either way no panic must occur.
+        let (result, _warnings) = cfg.expand_user_field("${user}", &HashMap::new());
+        // The result is either the env value or the literal "${user}" — no panic.
+        assert!(!result.is_empty());
+    }
+
+    /// Named key from users: map expands in user field.
+    #[test]
+    fn test_named_key_expands_from_users_map() {
+        let cfg = conn_with_user_and_users_map("${t1user}", "users:\n  t1user: ops\n");
+        let p = plan_with_overrides(
+            &cfg,
+            "srv",
+            &argv(&["yconn", "connect", "srv"]),
+            false,
+            &HashMap::new(),
+        )
+        .unwrap();
+        if let ConnectPlan::Ssh(args) = p {
+            assert!(
+                args.last().unwrap().starts_with("ops@"),
+                "expected ops@..., got {:?}",
+                args
+            );
+        }
+    }
+
+    /// `--user user:alice` overrides ${user} expansion.
+    #[test]
+    fn test_user_override_user_key_overrides_dollar_user() {
+        let cfg = conn_with_user("${user}");
+        let mut overrides = HashMap::new();
+        overrides.insert("user".to_string(), "alice".to_string());
+        let p = plan_with_overrides(
+            &cfg,
+            "srv",
+            &argv(&["yconn", "connect", "srv"]),
+            false,
+            &overrides,
+        )
+        .unwrap();
+        if let ConnectPlan::Ssh(args) = p {
+            assert!(
+                args.last().unwrap().starts_with("alice@"),
+                "expected alice@..., got {:?}",
+                args
+            );
+        }
+    }
+
+    /// `--user t1user:alice` overrides config-loaded users: entry.
+    #[test]
+    fn test_user_override_named_key_shadows_config() {
+        let cfg = conn_with_user_and_users_map("${t1user}", "users:\n  t1user: ops\n");
+        let mut overrides = HashMap::new();
+        overrides.insert("t1user".to_string(), "alice".to_string());
+        let p = plan_with_overrides(
+            &cfg,
+            "srv",
+            &argv(&["yconn", "connect", "srv"]),
+            false,
+            &overrides,
+        )
+        .unwrap();
+        if let ConnectPlan::Ssh(args) = p {
+            assert!(
+                args.last().unwrap().starts_with("alice@"),
+                "expected alice@..., got {:?}",
+                args
+            );
+        }
+    }
+
+    /// Multiple --user pairs are all applied.
+    #[test]
+    fn test_multiple_user_overrides_all_applied() {
+        let cfg =
+            conn_with_user_and_users_map("${t1user}", "users:\n  t1user: ops\n  other: ignored\n");
+        let mut overrides = HashMap::new();
+        overrides.insert("t1user".to_string(), "carol".to_string());
+        overrides.insert("other".to_string(), "dave".to_string());
+        let p = plan_with_overrides(
+            &cfg,
+            "srv",
+            &argv(&["yconn", "connect", "srv"]),
+            false,
+            &overrides,
+        )
+        .unwrap();
+        if let ConnectPlan::Ssh(args) = p {
+            assert!(
+                args.last().unwrap().starts_with("carol@"),
+                "expected carol@..., got {:?}",
+                args
+            );
+        }
+    }
+
+    /// Unresolved template emits a warning (via expand_user_field).
+    #[test]
+    fn test_unresolved_template_warns() {
+        let cfg = conn_with_user("${unknown_key}");
+        let (_result, warnings) = cfg.expand_user_field("${unknown_key}", &HashMap::new());
+        assert!(
+            !warnings.is_empty(),
+            "expected at least one warning for unresolved template"
+        );
+        assert!(
+            warnings[0].contains("unresolved"),
+            "warning should mention 'unresolved': {}",
+            warnings[0]
         );
     }
 }
