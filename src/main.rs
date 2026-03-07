@@ -25,9 +25,17 @@ fn main() -> Result<()> {
             let cfg = load_and_warn(&renderer, verbose)?;
             commands::list::run(&cfg, &renderer, all, group.as_deref())
         }
-        Commands::Show { name } => {
+        Commands::Show { name, dump } => {
             let cfg = load_and_warn(&renderer, verbose)?;
-            commands::show::run(&cfg, &renderer, &name)
+            if dump {
+                commands::show::run_dump(&cfg, &renderer)
+            } else {
+                commands::show::run(
+                    &cfg,
+                    &renderer,
+                    &name.expect("name is required when --dump is not set"),
+                )
+            }
         }
         Commands::Config => {
             let cfg = load_and_warn(&renderer, verbose)?;
