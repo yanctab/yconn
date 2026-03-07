@@ -65,6 +65,10 @@ pub enum Commands {
     Connect {
         /// Name of the connection to open
         name: String,
+        /// Override or add a users: map entry for this invocation (repeatable).
+        /// Format: key:value. Use --user user:<name> to override ${user} expansion.
+        #[arg(long = "user", value_name = "KEY:VALUE", action = clap::ArgAction::Append)]
+        user_overrides: Vec<String>,
     },
 
     /// Show the resolved config for a connection (no secrets printed)
@@ -125,6 +129,42 @@ pub enum Commands {
         /// Print generated config to stdout without writing any files
         #[arg(long)]
         dry_run: bool,
+        /// Override or add a users: map entry for this invocation (repeatable).
+        /// Format: key:value. Mutually exclusive with --skip-user.
+        #[arg(long = "user", value_name = "KEY:VALUE", action = clap::ArgAction::Append, conflicts_with = "skip_user")]
+        user_overrides: Vec<String>,
+        /// Omit User lines from all generated Host blocks.
+        /// Mutually exclusive with --user.
+        #[arg(long, conflicts_with = "user_overrides")]
+        skip_user: bool,
+    },
+
+    /// Manage user key/value entries in the users: config section
+    User {
+        #[command(subcommand)]
+        subcommand: UserCommands,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum UserCommands {
+    /// List all user entries across all layers (with shadowing info)
+    Show,
+
+    /// Interactive wizard to add a user entry to a chosen layer
+    Add {
+        /// Target a specific config layer
+        #[arg(long, value_name = "LAYER")]
+        layer: Option<LayerArg>,
+    },
+
+    /// Open the source config file for a named user entry in $EDITOR
+    Edit {
+        /// Key of the user entry to edit
+        key: String,
+        /// Target a specific config layer
+        #[arg(long, value_name = "LAYER")]
+        layer: Option<LayerArg>,
     },
 }
 

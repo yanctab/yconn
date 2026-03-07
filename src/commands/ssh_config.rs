@@ -1,13 +1,14 @@
 // Handler for `yconn ssh-config generate` — write SSH Host blocks to
 // ~/.ssh/yconn-connections and update ~/.ssh/config with an Include line.
 
+use std::collections::HashMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use crate::config::Connection;
+use crate::config::{Connection, LoadedConfig};
 use crate::display::Renderer;
 
 // ─── Translation helpers ──────────────────────────────────────────────────────
@@ -48,8 +49,10 @@ fn translate_host_for_ssh(host: &str) -> String {
 /// `${name}` in the `host` field is replaced with `%h` so SSH expands it to
 /// the matched hostname at connection time.
 ///
+/// When `skip_user` is `true`, the `User` line is omitted from all blocks.
+///
 /// The output contains no trailing newline after the last block.
-pub fn render_ssh_config(connections: &[Connection]) -> String {
+pub fn render_ssh_config(connections: &[Connection], skip_user: bool) -> String {
     let mut out = String::new();
 
     for conn in connections {
@@ -65,7 +68,15 @@ pub fn render_ssh_config(connections: &[Connection]) -> String {
 
         out.push_str(&format!("Host {ssh_host}\n"));
         out.push_str(&format!("    HostName {ssh_hostname}\n"));
-        out.push_str(&format!("    User {}\n", conn.user));
+        if !skip_user {
+            // If the user field still contains an unresolved template token,
+            // emit a comment instead of an invalid SSH User directive.
+            if conn.user.contains("${") {
+                out.push_str(&format!("# yconn: user: {} (unresolved)\n", conn.user));
+            } else {
+                out.push_str(&format!("    User {}\n", conn.user));
+            }
+        }
         if conn.port != 22 {
             out.push_str(&format!("    Port {}\n", conn.port));
         }
@@ -136,12 +147,24 @@ fn inject_include(home: &Path) -> Result<()> {
 // ─── Command entry points ─────────────────────────────────────────────────────
 
 pub fn run_generate(
-    connections: &[Connection],
-    _renderer: &Renderer,
+    cfg: &LoadedConfig,
+    renderer: &Renderer,
     dry_run: bool,
     home: &Path,
+    inline_overrides: &HashMap<String, String>,
+    skip_user: bool,
 ) -> Result<()> {
-    let content = render_ssh_config(connections);
+    // Expand ${<key>} templates in the user field of each connection.
+    let mut connections: Vec<Connection> = cfg.connections.clone();
+    for conn in &mut connections {
+        let (expanded, warnings) = cfg.expand_user_field(&conn.user, inline_overrides);
+        for w in &warnings {
+            renderer.warn(w);
+        }
+        conn.user = expanded;
+    }
+
+    let content = render_ssh_config(&connections, skip_user);
     let block_count = connections.len();
 
     if dry_run {
@@ -207,7 +230,7 @@ mod tests {
             "key",
             Some("~/.ssh/id_rsa"),
         );
-        let out = render_ssh_config(&[conn]);
+        let out = render_ssh_config(&[conn], false);
         assert!(out.contains("Host prod-web\n"), "missing Host line");
         assert!(out.contains("    HostName 10.0.1.50\n"));
         assert!(out.contains("    User deploy\n"));
@@ -225,7 +248,7 @@ mod tests {
             "password",
             None,
         );
-        let out = render_ssh_config(&[conn]);
+        let out = render_ssh_config(&[conn], false);
         assert!(out.contains("Host staging-db\n"));
         assert!(
             !out.contains("IdentityFile"),
@@ -236,7 +259,7 @@ mod tests {
     #[test]
     fn test_port_22_omitted() {
         let conn = make_conn("srv", "1.2.3.4", "ops", 22, "password", None);
-        let out = render_ssh_config(&[conn]);
+        let out = render_ssh_config(&[conn], false);
         assert!(!out.contains("Port"), "port 22 must not appear");
     }
 
@@ -250,14 +273,14 @@ mod tests {
             "key",
             Some("~/.ssh/key"),
         );
-        let out = render_ssh_config(&[conn]);
+        let out = render_ssh_config(&[conn], false);
         assert!(out.contains("    Port 2222\n"), "custom port must appear");
     }
 
     #[test]
     fn test_glob_name_rendered_as_ssh_host_pattern() {
         let conn = make_conn("web-*", "${name}.corp.com", "deploy", 22, "password", None);
-        let out = render_ssh_config(&[conn]);
+        let out = render_ssh_config(&[conn], false);
         assert!(
             out.contains("Host web-*\n"),
             "glob must appear as Host pattern"
@@ -279,7 +302,7 @@ mod tests {
             "password",
             None,
         );
-        let out = render_ssh_config(&[conn]);
+        let out = render_ssh_config(&[conn], false);
         assert!(
             out.contains("Host server*\n"),
             "range [N..M] must become * in Host line"
@@ -297,7 +320,7 @@ mod tests {
     #[test]
     fn test_name_template_in_host_becomes_percent_h() {
         let conn = make_conn("web-*", "${name}.corp.com", "deploy", 22, "password", None);
-        let out = render_ssh_config(&[conn]);
+        let out = render_ssh_config(&[conn], false);
         assert!(out.contains("    HostName %h.corp.com\n"));
         assert!(!out.contains("${name}"));
     }
@@ -312,7 +335,7 @@ mod tests {
             "key",
             None,
         );
-        let out = render_ssh_config(&[conn]);
+        let out = render_ssh_config(&[conn], false);
         assert!(out.contains("    HostName bastion.example.com\n"));
     }
 
@@ -373,7 +396,138 @@ mod tests {
     #[test]
     fn test_link_field_appears_in_comment() {
         let conn = make_conn_with_link("srv", "https://wiki.example.com/srv");
-        let out = render_ssh_config(&[conn]);
+        let out = render_ssh_config(&[conn], false);
         assert!(out.contains("# yconn: link: https://wiki.example.com/srv"));
+    }
+
+    // ── user field expansion ───────────────────────────────────────────────────
+
+    /// Helper: load config from inline YAML with a users: section, expand user
+    /// fields using inline_overrides, and return the rendered SSH config string.
+    fn render_expanded(
+        yaml: &str,
+        inline_overrides: &HashMap<String, String>,
+        skip_user: bool,
+    ) -> (String, Vec<String>) {
+        use crate::config;
+        use tempfile::TempDir;
+
+        let user_dir = TempDir::new().unwrap();
+        let cwd = TempDir::new().unwrap();
+        let sys = TempDir::new().unwrap();
+        fs::write(user_dir.path().join("connections.yaml"), yaml).unwrap();
+
+        let cfg = config::load_impl(
+            cwd.path(),
+            Some("connections"),
+            false,
+            Some(user_dir.path()),
+            sys.path(),
+        )
+        .unwrap();
+
+        let mut conns: Vec<Connection> = cfg.connections.clone();
+        let mut all_warnings: Vec<String> = Vec::new();
+        for conn in &mut conns {
+            let (expanded, warnings) = cfg.expand_user_field(&conn.user, inline_overrides);
+            all_warnings.extend(warnings);
+            conn.user = expanded;
+        }
+
+        (render_ssh_config(&conns, skip_user), all_warnings)
+    }
+
+    #[test]
+    fn test_dollar_user_expanded_from_override() {
+        // Use --user user:alice override (deterministic, no dependency on $USER env var).
+        let yaml = "connections:\n  srv:\n    host: myhost\n    user: \"${user}\"\n    auth: password\n    description: test\n";
+        let mut overrides = HashMap::new();
+        overrides.insert("user".to_string(), "alice".to_string());
+        let (out, _warnings) = render_expanded(yaml, &overrides, false);
+        assert!(
+            out.contains("    User alice\n"),
+            "expected 'User alice', got: {out}"
+        );
+        assert!(!out.contains("${user}"));
+    }
+
+    #[test]
+    fn test_dollar_user_unresolved_emits_comment_not_user_line() {
+        // When expansion leaves ${user} unchanged (no override, env may be set but
+        // we test the render path directly with the literal value).
+        let conn = make_conn("srv", "myhost", "${user}", 22, "password", None);
+        let out = render_ssh_config(&[conn], false);
+        // The unresolved token should appear as a comment, not a User directive.
+        assert!(
+            !out.contains("    User ${user}"),
+            "must not render as User line: {out}"
+        );
+        assert!(
+            out.contains("# yconn: user: ${user} (unresolved)"),
+            "must render as comment: {out}"
+        );
+    }
+
+    #[test]
+    fn test_named_key_expanded_from_users_map() {
+        let yaml = "users:\n  t1user: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth: password\n    description: test\n";
+        let (out, warnings) = render_expanded(yaml, &HashMap::new(), false);
+        assert!(
+            out.contains("    User ops\n"),
+            "expected 'User ops', got: {out}"
+        );
+        assert!(warnings.is_empty(), "no warnings expected: {warnings:?}");
+    }
+
+    #[test]
+    fn test_skip_user_omits_user_line() {
+        let conn = make_conn("srv", "myhost", "deploy", 22, "password", None);
+        let out = render_ssh_config(&[conn], true);
+        assert!(
+            !out.contains("User"),
+            "User line must be omitted with skip_user: {out}"
+        );
+    }
+
+    #[test]
+    fn test_user_override_overrides_users_map() {
+        let yaml = "users:\n  t1user: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth: password\n    description: test\n";
+        let mut overrides = HashMap::new();
+        overrides.insert("t1user".to_string(), "alice".to_string());
+        let (out, warnings) = render_expanded(yaml, &overrides, false);
+        assert!(
+            out.contains("    User alice\n"),
+            "expected 'User alice', got: {out}"
+        );
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_multiple_user_overrides_all_applied() {
+        let yaml = "users:\n  k1: \"a\"\nconnections:\n  c1:\n    host: h1\n    user: \"${k1}\"\n    auth: password\n    description: d1\n  c2:\n    host: h2\n    user: \"${user}\"\n    auth: password\n    description: d2\n";
+        let mut overrides = HashMap::new();
+        overrides.insert("k1".to_string(), "carol".to_string());
+        overrides.insert("user".to_string(), "dave".to_string());
+        let (out, warnings) = render_expanded(yaml, &overrides, false);
+        assert!(
+            out.contains("    User carol\n") || out.contains("    User dave\n"),
+            "both overrides must be applied: {out}"
+        );
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_unresolved_template_produces_warning() {
+        let yaml = "connections:\n  srv:\n    host: myhost\n    user: \"${nokey}\"\n    auth: password\n    description: test\n";
+        let (_out, warnings) = render_expanded(yaml, &HashMap::new(), false);
+        assert!(
+            !warnings.is_empty(),
+            "expected warning for unresolved template"
+        );
+        assert!(
+            warnings[0].contains("unresolved"),
+            "warning must say unresolved: {}",
+            warnings[0]
+        );
     }
 }

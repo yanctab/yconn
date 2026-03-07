@@ -11,3 +11,4 @@ pub mod list;
 pub mod remove;
 pub mod show;
 pub mod ssh_config;
+pub mod user;
