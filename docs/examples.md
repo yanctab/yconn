@@ -491,6 +491,87 @@ directory and checks again.
 
 ---
 
+## `users:` map and `${key}` expansion
+
+**When to use:** You want to define a short alias for an SSH username that varies per developer or
+per environment, and reference it in connection entries without repeating the actual value
+everywhere.
+
+**`~/.config/yconn/connections.yaml`** (user layer — private to your machine)
+
+```yaml
+version: 1
+
+users:
+  t1user: "t1extmzigher"   # your personal username on the prod cluster
+
+connections:
+  prod-web:
+    host: 10.0.1.50
+    user: ${t1user}           # expands to "t1extmzigher" at connect time
+    auth: key
+    key: ~/.ssh/prod_key
+    description: "Production web server"
+
+  staging:
+    host: staging.internal
+    user: ${user}             # expands to the $USER environment variable
+    auth: password
+    description: "Staging server (uses your local $USER)"
+```
+
+**Commands:**
+
+```bash
+# Connect — yconn expands ${t1user} to "t1extmzigher" before invoking SSH
+yconn connect prod-web
+
+# Override the users: entry for this invocation only (connect as alice instead)
+yconn connect prod-web --user t1user:alice
+
+# Override the ${user} env-var expansion for this invocation
+yconn connect staging --user user:alice
+
+# Inspect raw config values — yconn show does NOT expand templates
+yconn show prod-web
+# User: ${t1user}   ← raw value, not expanded
+
+# List all user entries across all layers (with source and shadowing info)
+yconn user show
+
+# Add a new user entry interactively (defaults to user layer)
+yconn user add
+
+# Add to the project layer instead
+yconn user add --layer project
+
+# Edit the source file for a named entry
+yconn user edit t1user
+
+# Generate SSH config — expands ${t1user} in User lines
+yconn ssh-config
+
+# Generate SSH config but skip all User lines
+yconn ssh-config --skip-user
+
+# Generate SSH config overriding t1user for this run
+yconn ssh-config --user t1user:alice
+```
+
+**Notes:**
+
+- `${key}` expansion looks up `key` in the merged `users:` map (project > user > system priority).
+- `${user}` (lowercase, literal) is special — it expands from the `$USER` environment variable,
+  not from a `users:` map entry. Named map lookup always happens first; `${user}` env-var
+  expansion is a separate fallback step.
+- If a `${key}` token cannot be resolved after all expansion steps, a warning is emitted to
+  stderr and the literal template string is passed through unchanged to SSH.
+- `yconn show` prints raw unexpanded field values — it never expands templates.
+- `--user KEY:VALUE` overrides apply for one invocation only; they are not persisted to any
+  config file.
+
+---
+
 ## See also
 
 - [Configuration reference](configuration.md) — full field reference and layer system
