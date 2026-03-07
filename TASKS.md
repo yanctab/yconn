@@ -147,7 +147,7 @@
   - Reuse: src/cli/mod.rs:Commands (rename `User` variant to `Users`), src/cli/mod.rs:UserCommands (no structural change — variant name stays, only the CLI-facing command name changes via clap's `name` attribute or enum rename), src/main.rs:Commands::User match arm (rename to Commands::Users)
   - Risks: the Rust enum variant `Commands::User` and `UserCommands` type name must be kept or renamed consistently — if renamed to `Commands::Users` every match arm and import in main.rs must be updated; clap derives the CLI name from the variant name by default (lowercased), so renaming the variant to `Users` automatically changes the CLI token to `users` with no extra annotation needed; doc comments inside `src/commands/user.rs` that reference `yconn user` must be updated to `yconn users` to avoid misleading future readers; functional tests that invoke the binary with `["user", "show"]` etc. must be updated to `["users", "show"]`; no YAML config format changes — only the CLI surface changes
 
-- [ ] **Remove `yconn:` prefix from SSH config comments** [cli] S
+- [x] **Remove `yconn:` prefix from SSH config comments** [cli] S
   - Acceptance: `render_ssh_config` emits comments as `# description: …`, `# auth: …`, `# link: …`, and `# user: … (unresolved)` — the `yconn: ` substring no longer appears in any generated output; unit tests in `src/commands/ssh_config.rs` are updated so all `assert!(out.contains("# yconn: …"))` assertions become `assert!(out.contains("# …"))` and a negative assertion `assert!(!out.contains("# yconn:"))` is added to the link test; `make test` passes
   - Depends on: Rename `yconn user` command to `yconn users`
   - Modify: src/commands/ssh_config.rs

@@ -60,10 +60,10 @@ pub fn render_ssh_config(connections: &[Connection], skip_user: bool) -> String 
         let ssh_hostname = translate_host_for_ssh(&conn.host);
 
         // Comment header with metadata.
-        out.push_str(&format!("# yconn: description: {}\n", conn.description));
-        out.push_str(&format!("# yconn: auth: {}\n", conn.auth));
+        out.push_str(&format!("# description: {}\n", conn.description));
+        out.push_str(&format!("# auth: {}\n", conn.auth));
         if let Some(link) = &conn.link {
-            out.push_str(&format!("# yconn: link: {link}\n"));
+            out.push_str(&format!("# link: {link}\n"));
         }
 
         out.push_str(&format!("Host {ssh_host}\n"));
@@ -72,7 +72,7 @@ pub fn render_ssh_config(connections: &[Connection], skip_user: bool) -> String 
             // If the user field still contains an unresolved template token,
             // emit a comment instead of an invalid SSH User directive.
             if conn.user.contains("${") {
-                out.push_str(&format!("# yconn: user: {} (unresolved)\n", conn.user));
+                out.push_str(&format!("# user: {} (unresolved)\n", conn.user));
             } else {
                 out.push_str(&format!("    User {}\n", conn.user));
             }
@@ -397,7 +397,8 @@ mod tests {
     fn test_link_field_appears_in_comment() {
         let conn = make_conn_with_link("srv", "https://wiki.example.com/srv");
         let out = render_ssh_config(&[conn], false);
-        assert!(out.contains("# yconn: link: https://wiki.example.com/srv"));
+        assert!(out.contains("# link: https://wiki.example.com/srv"));
+        assert!(!out.contains("# yconn:"));
     }
 
     // ── user field expansion ───────────────────────────────────────────────────
@@ -463,7 +464,7 @@ mod tests {
             "must not render as User line: {out}"
         );
         assert!(
-            out.contains("# yconn: user: ${user} (unresolved)"),
+            out.contains("# user: ${user} (unresolved)"),
             "must render as comment: {out}"
         );
     }
