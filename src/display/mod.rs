@@ -445,6 +445,15 @@ impl Renderer {
         print!("{}", self.render_config_status(status));
     }
 
+    /// Print the `Username: <value>` header line followed by a blank line.
+    ///
+    /// Called before [`user_list`] so the resolved username appears above the
+    /// table.  The header is always printed, even when `username` is empty.
+    pub fn print_username_header(&self, username: &str) {
+        println!("Username: {username}");
+        println!();
+    }
+
     /// Print the user list table (`yconn user show`).
     ///
     /// Accepts a slice of [`crate::config::UserEntry`] directly to avoid

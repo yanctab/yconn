@@ -130,6 +130,26 @@ impl TestEnv {
         child.wait_with_output().unwrap()
     }
 
+    /// Same as `run` but with additional environment variables injected.
+    fn run_with_env(&self, args: &[&str], extra_env: &[(&str, &str)]) -> Output {
+        let path = format!(
+            "{}:{}",
+            self.mock_bin.path().display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_yconn"));
+        cmd.args(args)
+            .env("PATH", path)
+            .env("XDG_CONFIG_HOME", self.xdg_config.path())
+            .env("HOME", self.home.path())
+            .env_remove("CONN_IN_DOCKER")
+            .current_dir(self.cwd.path());
+        for (key, val) in extra_env {
+            cmd.env(key, val);
+        }
+        cmd.output().unwrap()
+    }
+
     /// Install a mock editor script into `mock_bin` that exits 0 without
     /// modifying any files.  Returns the script path (for assertions).
     fn install_mock_editor(&self) {
@@ -1204,5 +1224,40 @@ fn connect_user_override_shadows_config_users_entry() {
     assert!(
         stdout.contains("alice@myhost"),
         "expected alice@myhost (override), got: {stdout}"
+    );
+}
+
+// ─── yconn user show — username header ───────────────────────────────────────
+
+/// `yconn user show` prints `Username: alice` when the `users:` map contains
+/// a `user` key with value `alice`.
+#[test]
+fn user_show_prints_username_from_map() {
+    let env = TestEnv::new();
+    env.write_user_config("connections", "version: 1\n\nusers:\n  user: \"alice\"\n");
+
+    let out = env.run(&["user", "show"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Username: alice"),
+        "expected 'Username: alice' in output: {stdout}"
+    );
+}
+
+/// `yconn user show` prints `Username: bob` when no `user` key exists in the
+/// `users:` map but the `USER` environment variable is set to `bob`.
+#[test]
+fn user_show_prints_username_from_env_var() {
+    let env = TestEnv::new();
+    // No users map at all — fall back to $USER env var.
+    let out = env.run_with_env(&["user", "show"], &[("USER", "bob")]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Username: bob"),
+        "expected 'Username: bob' in output: {stdout}"
     );
 }
