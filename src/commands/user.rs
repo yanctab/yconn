@@ -91,23 +91,18 @@ pub fn add(layer: Option<LayerArg>, user_pairs: Vec<String>) -> Result<()> {
 pub(crate) fn parse_user_pairs(pairs: &[String]) -> Result<Vec<(String, String)>> {
     pairs
         .iter()
-        .map(|s| {
-            match s.split_once(':') {
-                Some((key, value)) => {
-                    if key.is_empty() {
-                        anyhow::bail!("--user value '{}': key must not be empty", s);
-                    }
-                    if value.is_empty() {
-                        anyhow::bail!("--user value '{}': value must not be empty", s);
-                    }
-                    Ok((key.to_string(), value.to_string()))
+        .map(|s| match s.split_once(':') {
+            Some((key, value)) => {
+                if key.is_empty() {
+                    anyhow::bail!("--user value '{}': key must not be empty", s);
                 }
-                None => {
-                    anyhow::bail!(
-                        "--user value '{}' is invalid: expected format KEY:VALUE",
-                        s
-                    );
+                if value.is_empty() {
+                    anyhow::bail!("--user value '{}': value must not be empty", s);
                 }
+                Ok((key.to_string(), value.to_string()))
+            }
+            None => {
+                anyhow::bail!("--user value '{}' is invalid: expected format KEY:VALUE", s);
             }
         })
         .collect()
@@ -118,9 +113,8 @@ fn add_pairs(_layer: Layer, layer_dir: &Path, pairs: &[(String, String)]) -> Res
     let target = layer_dir.join("connections.yaml");
 
     for (key, value) in pairs {
-        write_user_entry(&target, key, value).with_context(|| {
-            format!("failed to write user entry '{key}'")
-        })?;
+        write_user_entry(&target, key, value)
+            .with_context(|| format!("failed to write user entry '{key}'"))?;
         println!("Added user entry '{key}' to {}", target.display());
     }
 
