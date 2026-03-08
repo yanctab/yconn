@@ -297,8 +297,7 @@ mod tests {
             "expected at least one blank line between two connection entries, got:\n{out}"
         );
         // Output is still valid YAML.
-        let _: serde_yaml::Value =
-            serde_yaml::from_str(&out).expect("output should be valid YAML");
+        let _: serde_yaml::Value = serde_yaml::from_str(&out).expect("output should be valid YAML");
     }
 
     /// Three connections: two blank lines injected (one between each pair).
@@ -316,8 +315,7 @@ mod tests {
             blank_count >= 2,
             "expected at least two blank lines between three connection entries, got:\n{out}"
         );
-        let _: serde_yaml::Value =
-            serde_yaml::from_str(&out).expect("output should be valid YAML");
+        let _: serde_yaml::Value = serde_yaml::from_str(&out).expect("output should be valid YAML");
     }
 
     /// Two connections + users: blank line between connections block and users.
@@ -331,8 +329,7 @@ mod tests {
             out.contains("\nusers:"),
             "expected blank line immediately before users: in:\n{out}"
         );
-        let _: serde_yaml::Value =
-            serde_yaml::from_str(&out).expect("output should be valid YAML");
+        let _: serde_yaml::Value = serde_yaml::from_str(&out).expect("output should be valid YAML");
     }
 
     /// build_dump_yaml on a two-connection config contains at least two blank
