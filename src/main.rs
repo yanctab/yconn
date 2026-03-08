@@ -10,7 +10,10 @@ mod docker;
 mod group;
 mod security;
 
-use cli::{Cli, Commands, ConnectionCommands, GroupCommands, UserCommands};
+use cli::{
+    Cli, Commands, ConnectionCommands, GroupCommands, SshConfigArgs, SshConfigCommands,
+    UserCommands,
+};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -76,18 +79,33 @@ fn main() -> Result<()> {
             let overrides = parse_user_overrides(&user_overrides)?;
             commands::connect::run(&cfg, &renderer, &name, verbose, &overrides)
         }
-        Commands::SshConfig {
-            dry_run,
-            user_overrides,
-            skip_user,
-        } => {
-            let cfg = load_and_warn(&renderer, verbose)?;
-            let overrides = parse_user_overrides(&user_overrides)?;
+        Commands::SshConfig(SshConfigArgs { subcommand }) => {
             let home = dirs::home_dir()
                 .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?;
-            commands::ssh_config::run_generate(
-                &cfg, &renderer, dry_run, &home, &overrides, skip_user,
-            )
+            match subcommand {
+                SshConfigCommands::Install {
+                    dry_run,
+                    user_overrides,
+                    skip_user,
+                } => {
+                    let cfg = load_and_warn(&renderer, verbose)?;
+                    let overrides = parse_user_overrides(&user_overrides)?;
+                    commands::ssh_config::run_install(
+                        &cfg, &renderer, dry_run, &home, &overrides, skip_user,
+                    )
+                }
+                SshConfigCommands::Print {
+                    user_overrides,
+                    skip_user,
+                } => {
+                    let cfg = load_and_warn(&renderer, verbose)?;
+                    let overrides = parse_user_overrides(&user_overrides)?;
+                    commands::ssh_config::run_print(&cfg, &renderer, &home, &overrides, skip_user)
+                }
+                SshConfigCommands::Uninstall => commands::ssh_config::run_uninstall(&home),
+                SshConfigCommands::Disable => commands::ssh_config::run_disable(&home),
+                SshConfigCommands::Enable => commands::ssh_config::run_enable(&home),
+            }
         }
         Commands::Users { subcommand } => match subcommand {
             UserCommands::Show => {

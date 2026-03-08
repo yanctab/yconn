@@ -109,23 +109,43 @@ keys to be pre-baked into an image rather than distributed to developer machines
 : Print the active group name and the resolved config file paths for each layer,
   indicating which files were found.
 
-**ssh-config**
-: Read all active connections (respecting the active group lock and layer merge,
-  identical to **yconn list**) and write one `Host` block per non-wildcard,
-  non-range connection to `~/.ssh/yconn-connections`. Updates `~/.ssh/config`
-  idempotently by prepending `Include ~/.ssh/yconn-connections` if the line is
-  not already present. Wildcard and range-pattern connection names are skipped
-  with a comment. A summary line is printed showing the count of Host blocks
-  written and the output file path.
+**ssh-config install**
+: Read all active connections and write one `Host` block per connection to
+  `~/.ssh/yconn-connections`. Updates `~/.ssh/config` idempotently by prepending
+  `Include ~/.ssh/yconn-connections` if absent. A summary line is printed showing
+  the count of Host blocks written.
 
   Flags:
 
-  - **--dry-run** — print the generated file content and the `~/.ssh/config`
-    change to stdout without writing any files.
+  - **--dry-run** — print the generated Host blocks to stdout without writing any files.
   - **--user** *KEY:VALUE* — override or add a `users:` map entry for this
     invocation (repeatable). Mutually exclusive with **--skip-user**.
   - **--skip-user** — omit `User` lines from all generated Host blocks.
     Mutually exclusive with **--user**.
+
+**ssh-config print**
+: Render the fully merged SSH config to stdout without writing any files.
+
+  Flags:
+
+  - **--user** *KEY:VALUE* — override or add a `users:` map entry for this
+    invocation (repeatable). Mutually exclusive with **--skip-user**.
+  - **--skip-user** — omit `User` lines from all generated Host blocks.
+    Mutually exclusive with **--user**.
+
+**ssh-config uninstall**
+: Remove `~/.ssh/yconn-connections` and the `Include ~/.ssh/yconn-connections`
+  line from `~/.ssh/config` (if present). Prints a message for each action taken.
+  Graceful when `~/.ssh/yconn-connections` does not exist.
+
+**ssh-config disable**
+: Remove the `Include ~/.ssh/yconn-connections` line from `~/.ssh/config`,
+  keeping `~/.ssh/yconn-connections` intact. Prints a message. No-op if the
+  line is already absent.
+
+**ssh-config enable**
+: Add the `Include ~/.ssh/yconn-connections` line back to `~/.ssh/config` if
+  currently absent. Prints a message. No-op with a message if already present.
 
 **users show**
 : List all user key/value entries across all config layers. Displays KEY, VALUE,
@@ -231,10 +251,11 @@ system priority as connections.
 
 **`yconn connections show`** displays raw unexpanded field values — templates are never expanded in show output.
 
-**Per-invocation overrides:** both **yconn connect** and **yconn ssh-config** accept
-**--user** *KEY:VALUE* (repeatable) to override or add entries in the `users:` map for that
-invocation only. **yconn ssh-config** also accepts **--skip-user** to omit `User` lines from
-all generated Host blocks entirely. **--user** and **--skip-user** are mutually exclusive.
+**Per-invocation overrides:** **yconn connect**, **yconn ssh-config install**, and
+**yconn ssh-config print** accept **--user** *KEY:VALUE* (repeatable) to override or add
+entries in the `users:` map for that invocation only. **yconn ssh-config install** and
+**yconn ssh-config print** also accept **--skip-user** to omit `User` lines from all
+generated Host blocks entirely. **--user** and **--skip-user** are mutually exclusive.
 
 ## Wildcard and range patterns
 
@@ -338,13 +359,18 @@ yconn connections init --location dotfile     # creates .connections.yaml
 yconn connections init --location plain       # creates connections.yaml
 ```
 
-Generate SSH config (writes Host blocks to `~/.ssh/yconn-connections`):
+Manage SSH config integration:
 
 ```
-yconn ssh-config
-yconn ssh-config --dry-run
-yconn ssh-config --user testuser:alice
-yconn ssh-config --skip-user
+yconn ssh-config install
+yconn ssh-config install --dry-run
+yconn ssh-config install --user testuser:alice
+yconn ssh-config install --skip-user
+yconn ssh-config print
+yconn ssh-config print --skip-user
+yconn ssh-config uninstall
+yconn ssh-config disable
+yconn ssh-config enable
 ```
 
 Manage user key/value entries:
@@ -372,11 +398,11 @@ yconn connect staging --user user:alice
 : User-level connection config. May reference local key paths and `users:` entries.
 
 `~/.ssh/yconn-connections`
-: Generated SSH Host blocks written by **yconn ssh-config**. Included from `~/.ssh/config`.
+: Generated SSH Host blocks written by **yconn ssh-config install**. Included from `~/.ssh/config`.
 
 `~/.ssh/config`
-: Standard SSH client config. **yconn ssh-config** prepends an `Include ~/.ssh/yconn-connections`
-  line if absent.
+: Standard SSH client config. **yconn ssh-config install** prepends an `Include ~/.ssh/yconn-connections`
+  line if absent. **yconn ssh-config uninstall** and **yconn ssh-config disable** remove it.
 
 `/etc/yconn/connections.yaml`
 : System-level connection config. Must not contain credentials.

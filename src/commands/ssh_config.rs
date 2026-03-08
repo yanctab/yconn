@@ -304,9 +304,41 @@ fn extract_unresolved_key(value: &str) -> Option<&str> {
     Some(&rest[..end])
 }
 
+/// Remove the `Include ~/.ssh/yconn-connections` line from `~/.ssh/config`.
+///
+/// Preserves all other content unchanged. Returns `true` if the line was
+/// found and removed, `false` if it was already absent.
+pub fn remove_include_line(home: &Path) -> Result<bool> {
+    let config_path = home.join(".ssh").join("config");
+    if !config_path.exists() {
+        return Ok(false);
+    }
+    let existing = fs::read_to_string(&config_path)
+        .with_context(|| format!("failed to read {}", config_path.display()))?;
+    if !existing.lines().any(|l| l.trim() == INCLUDE_LINE) {
+        return Ok(false);
+    }
+    // Remove the Include line, then strip any leading blank lines that were
+    // left behind (inject_include inserts "\n\n" after the Include line).
+    let updated = existing
+        .lines()
+        .filter(|l| l.trim() != INCLUDE_LINE)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let updated = updated.trim_start_matches('\n');
+    // Preserve a single trailing newline if the original had one.
+    let updated = if existing.ends_with('\n') {
+        format!("{updated}\n")
+    } else {
+        updated.to_string()
+    };
+    write_secure(&config_path, &updated)?;
+    Ok(true)
+}
+
 // ─── Command entry points ─────────────────────────────────────────────────────
 
-pub fn run_generate(
+pub fn run_install(
     cfg: &LoadedConfig,
     renderer: &Renderer,
     dry_run: bool,
@@ -371,6 +403,82 @@ pub fn run_generate(
         out_path.display()
     );
 
+    Ok(())
+}
+
+pub fn run_print(
+    cfg: &LoadedConfig,
+    renderer: &Renderer,
+    _home: &Path,
+    inline_overrides: &HashMap<String, String>,
+    skip_user: bool,
+) -> Result<()> {
+    // Expand ${<key>} templates in the user field of each connection.
+    let mut connections: Vec<Connection> = cfg.connections.clone();
+    for conn in &mut connections {
+        let (expanded, warnings) = cfg.expand_user_field(&conn.user, inline_overrides);
+        for w in &warnings {
+            let fix = extract_unresolved_key(&expanded)
+                .map(|key| format!("  Fix: yconn users add --user {key}:<value>"))
+                .unwrap_or_default();
+            if fix.is_empty() {
+                renderer.warn(w);
+            } else {
+                renderer.warn(&format!("{w}\n{fix}"));
+            }
+        }
+        conn.user = expanded;
+    }
+
+    let rendered = render_ssh_config(&connections, skip_user);
+    println!("{rendered}");
+    Ok(())
+}
+
+pub fn run_uninstall(home: &Path) -> Result<()> {
+    let out_path = output_path(home);
+    if out_path.exists() {
+        fs::remove_file(&out_path)
+            .with_context(|| format!("failed to remove {}", out_path.display()))?;
+        println!("Removed {}", out_path.display());
+    } else {
+        println!("{} does not exist — nothing to remove", out_path.display());
+    }
+
+    if remove_include_line(home)? {
+        println!("Removed Include line from ~/.ssh/config");
+    } else {
+        println!("Include line not present in ~/.ssh/config — nothing to remove");
+    }
+
+    Ok(())
+}
+
+pub fn run_disable(home: &Path) -> Result<()> {
+    if remove_include_line(home)? {
+        println!("Removed Include line from ~/.ssh/config");
+    } else {
+        println!("Include line not present in ~/.ssh/config — nothing to do");
+    }
+    Ok(())
+}
+
+pub fn run_enable(home: &Path) -> Result<()> {
+    let config_path = home.join(".ssh").join("config");
+    let already_present = config_path.exists() && {
+        let existing = fs::read_to_string(&config_path)
+            .with_context(|| format!("failed to read {}", config_path.display()))?;
+        existing.lines().any(|l| l.trim() == INCLUDE_LINE)
+    };
+
+    if already_present {
+        println!("Include line already present in ~/.ssh/config — nothing to do");
+        return Ok(());
+    }
+
+    ensure_ssh_dir(home)?;
+    inject_include(home)?;
+    println!("Added Include line to ~/.ssh/config");
     Ok(())
 }
 
@@ -529,6 +637,54 @@ mod tests {
         );
         let out = render_ssh_config(&[conn], false);
         assert!(out.contains("    HostName bastion.example.com\n"));
+    }
+
+    #[test]
+    fn test_remove_include_line_removes_only_include_line() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ssh_dir = tmp.path().join(".ssh");
+        fs::create_dir_all(&ssh_dir).unwrap();
+        let config_path = ssh_dir.join("config");
+        fs::write(
+            &config_path,
+            format!("{INCLUDE_LINE}\n\nHost existing\n    HostName 9.9.9.9\n"),
+        )
+        .unwrap();
+
+        let removed = remove_include_line(tmp.path()).unwrap();
+        assert!(removed, "must return true when line was present");
+
+        let result = fs::read_to_string(&config_path).unwrap();
+        assert!(
+            !result.contains(INCLUDE_LINE),
+            "Include line must be removed: {result}"
+        );
+        assert!(
+            result.contains("Host existing"),
+            "surrounding content must be preserved: {result}"
+        );
+        assert!(
+            result.contains("    HostName 9.9.9.9"),
+            "HostName must be preserved: {result}"
+        );
+    }
+
+    #[test]
+    fn test_remove_include_line_noop_when_absent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ssh_dir = tmp.path().join(".ssh");
+        fs::create_dir_all(&ssh_dir).unwrap();
+        let config_path = ssh_dir.join("config");
+        fs::write(&config_path, "Host existing\n    HostName 9.9.9.9\n").unwrap();
+
+        let removed = remove_include_line(tmp.path()).unwrap();
+        assert!(!removed, "must return false when line was absent");
+
+        let result = fs::read_to_string(&config_path).unwrap();
+        assert!(
+            result.contains("Host existing"),
+            "content must be unchanged: {result}"
+        );
     }
 
     #[test]
@@ -726,7 +882,7 @@ mod tests {
 
     #[test]
     fn test_unresolved_template_warning_contains_fix_command() {
-        // run_generate enriches warnings with the fix command at its call site.
+        // run_install enriches warnings with the fix command at its call site.
         // We test extract_unresolved_key directly here, and verify that the
         // enrichment logic produces the expected fix string.
         assert_eq!(

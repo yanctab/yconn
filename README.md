@@ -81,7 +81,11 @@ yconn groups use work
 | `yconn groups use <name>` | Set the active group |
 | `yconn groups clear` | Revert to the default group (`connections`) |
 | `yconn groups current` | Print the active group name and resolved config file paths |
-| `yconn ssh-config` | Write Host blocks to `~/.ssh/yconn-connections` and update `~/.ssh/config` |
+| `yconn ssh-config install` | Write Host blocks to `~/.ssh/yconn-connections` and update `~/.ssh/config` |
+| `yconn ssh-config print` | Print the fully merged SSH config to stdout without writing any files |
+| `yconn ssh-config uninstall` | Remove `~/.ssh/yconn-connections` and the `Include` line from `~/.ssh/config` |
+| `yconn ssh-config disable` | Remove the `Include` line from `~/.ssh/config`, keeping `~/.ssh/yconn-connections` intact |
+| `yconn ssh-config enable` | Add the `Include` line back to `~/.ssh/config` if currently absent |
 | `yconn users show` | List all user key/value entries across all layers |
 | `yconn users add` | Interactive wizard to add a user entry to a chosen layer; use `--user KEY:VALUE` (repeatable) to skip the wizard |
 | `yconn users edit <key>` | Open the source config file for a user entry in `$EDITOR` |
