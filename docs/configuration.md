@@ -39,11 +39,11 @@ The first match found in a directory wins; the walk then stops for that director
 Groups are inline tags on individual connections. Each connection entry can carry an optional
 `group:` field. All connections live in `connections.yaml` regardless of their group.
 
-The active group (set with `yconn group use <name>`) acts as a filter: when a group is locked,
+The active group (set with `yconn groups use <name>`) acts as a filter: when a group is locked,
 `yconn list` shows only connections whose `group:` field matches. `yconn list --all` always
 shows all connections regardless of any lock.
 
-See `yconn group --help` or [docs/examples.md](examples.md#inline-group-field-usage) for group
+See `yconn groups --help` or [docs/examples.md](examples.md#inline-group-field-usage) for group
 commands and examples.
 
 ---
@@ -107,7 +107,7 @@ connections:
 | `auth` | yes | `key` or `password` |
 | `key` | if `auth: key` | Path to private key file. When using Docker, the path is resolved inside the container. |
 | `description` | yes | Human-readable description of the connection |
-| `group` | no | Inline group tag. Used to filter connections with `yconn group use` or `yconn list --group`. |
+| `group` | no | Inline group tag. Used to filter connections with `yconn groups use` or `yconn list --group`. |
 | `link` | no | URL for further documentation (wiki, runbook, etc.) |
 
 ---
@@ -332,7 +332,7 @@ The project-level `.yconn/` config is not explicitly mounted. It is reached via 
 working directory mount combined with the upward directory walk that yconn performs at startup.
 
 All mounts except `~/.config/yconn` are read-only. The user config directory is read-write so
-that `session.yml` can be updated from inside the container (for example, `yconn group use`
+that `session.yml` can be updated from inside the container (for example, `yconn groups use`
 works correctly whether invoked inside or outside Docker).
 
 ### Container detection

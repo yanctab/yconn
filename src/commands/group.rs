@@ -1,4 +1,4 @@
-// Handlers for `yconn group` subcommands:
+// Handlers for `yconn groups` subcommands:
 //   list    — show all groups found across all connections
 //   use     — set the active group lock (persisted to ~/.config/yconn/session.yml)
 //   clear   — remove active_group from session.yml, revert to no lock
@@ -56,6 +56,7 @@ pub fn current(cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
 ///
 /// The group is always written even if no connections use it — the user can
 /// follow up with `yconn add` to tag connections with this group.
+/// Invoked as `yconn groups use <name>`.
 pub fn use_group(name: &str, cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
     let session_path = dirs::config_dir()
         .context("cannot determine user config directory")?

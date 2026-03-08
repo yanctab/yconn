@@ -61,7 +61,7 @@ yconn list
 yconn connect prod-web
 
 # Switch to a named group
-yconn group use work
+yconn groups use work
 ```
 
 ## Commands
@@ -76,10 +76,10 @@ yconn group use work
 | `yconn remove <name>` | Remove a connection (prompts for layer if ambiguous) |
 | `yconn init` | Scaffold a `<group>.yaml` in `.yconn/` in the current directory |
 | `yconn config` | Show active config files, their paths, and Docker status |
-| `yconn group list` | Show all groups found across all layers |
-| `yconn group use <name>` | Set the active group |
-| `yconn group clear` | Revert to the default group (`connections`) |
-| `yconn group current` | Print the active group name and resolved config file paths |
+| `yconn groups list` | Show all groups found across all layers |
+| `yconn groups use <name>` | Set the active group |
+| `yconn groups clear` | Revert to the default group (`connections`) |
+| `yconn groups current` | Print the active group name and resolved config file paths |
 | `yconn ssh-config` | Write Host blocks to `~/.ssh/yconn-connections` and update `~/.ssh/config` |
 | `yconn users show` | List all user key/value entries across all layers |
 | `yconn users add` | Interactive wizard to add a user entry to a chosen layer |

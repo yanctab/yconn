@@ -441,7 +441,7 @@ impl LoadedConfig {
     }
 
     /// Return unique group values present across all active connections.
-    /// Used by `yconn group list`.
+    /// Used by `yconn groups list`.
     pub fn discover_groups(&self) -> Vec<crate::group::GroupEntry> {
         use std::collections::BTreeMap;
         // BTreeMap keeps groups sorted by name for stable output.
