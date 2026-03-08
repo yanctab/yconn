@@ -59,23 +59,28 @@ pub fn render_ssh_config(connections: &[Connection], skip_user: bool) -> String 
         let ssh_host = translate_name_for_ssh(&conn.name);
         let ssh_hostname = translate_host_for_ssh(&conn.host);
 
-        // Comment header with metadata.
+        // Determine whether the user field contains an unresolved template token.
+        // This is evaluated once and used both for the pre-Host comment and for
+        // suppressing the User directive inside the block.
+        let has_unresolved_user = !skip_user && conn.user.contains("${");
+
+        // All comment lines appear contiguously before the Host line.
         out.push_str(&format!("# description: {}\n", conn.description));
         out.push_str(&format!("# auth: {}\n", conn.auth));
         if let Some(link) = &conn.link {
             out.push_str(&format!("# link: {link}\n"));
         }
+        // If the user field still contains an unresolved template token,
+        // emit a comment here (before Host) instead of an invalid SSH User
+        // directive inside the block.
+        if has_unresolved_user {
+            out.push_str(&format!("# user: {} (unresolved)\n", conn.user));
+        }
 
         out.push_str(&format!("Host {ssh_host}\n"));
         out.push_str(&format!("    HostName {ssh_hostname}\n"));
-        if !skip_user {
-            // If the user field still contains an unresolved template token,
-            // emit a comment instead of an invalid SSH User directive.
-            if conn.user.contains("${") {
-                out.push_str(&format!("# user: {} (unresolved)\n", conn.user));
-            } else {
-                out.push_str(&format!("    User {}\n", conn.user));
-            }
+        if !skip_user && !has_unresolved_user {
+            out.push_str(&format!("    User {}\n", conn.user));
         }
         if conn.port != 22 {
             out.push_str(&format!("    Port {}\n", conn.port));
@@ -529,6 +534,92 @@ mod tests {
             warnings[0].contains("unresolved"),
             "warning must say unresolved: {}",
             warnings[0]
+        );
+    }
+
+    /// All four comment fields (description, auth, link, unresolved user) must
+    /// appear contiguously before the `Host` line, in that order, and no `#`
+    /// lines must appear inside the Host block (after `Host` until the next
+    /// blank line).
+    #[test]
+    fn test_all_comment_fields_precede_host_line() {
+        let mut conn = make_conn(
+            "srv", "myhost", "${nokey}", // unresolved → triggers user comment
+            22, "password", None,
+        );
+        conn.link = Some("https://wiki.example.com/srv".to_string());
+        conn.description = "My server".to_string();
+
+        let out = render_ssh_config(&[conn], false);
+
+        // Locate positions.
+        let host_pos = out.find("Host srv\n").expect("Host line must be present");
+        let desc_pos = out
+            .find("# description:")
+            .expect("# description must be present");
+        let auth_pos = out.find("# auth:").expect("# auth must be present");
+        let link_pos = out.find("# link:").expect("# link must be present");
+        let user_pos = out
+            .find("# user: ${nokey} (unresolved)")
+            .expect("# user comment must be present");
+
+        // All comments precede the Host line.
+        assert!(desc_pos < host_pos, "# description must precede Host line");
+        assert!(auth_pos < host_pos, "# auth must precede Host line");
+        assert!(link_pos < host_pos, "# link must precede Host line");
+        assert!(
+            user_pos < host_pos,
+            "# user (unresolved) must precede Host line"
+        );
+
+        // Order: description → auth → link → user comment.
+        assert!(desc_pos < auth_pos, "# description must come before # auth");
+        assert!(auth_pos < link_pos, "# auth must come before # link");
+        assert!(
+            link_pos < user_pos,
+            "# link must come before # user comment"
+        );
+
+        // No # lines inside the Host block (between Host line and the trailing blank line).
+        let block_body = &out[host_pos..];
+        let blank_pos = block_body.find("\n\n").unwrap_or(block_body.len());
+        let block_interior = &block_body[..blank_pos];
+        // Skip the "Host srv\n" line itself when looking for embedded comments.
+        let after_host_line = &block_interior["Host srv\n".len()..];
+        assert!(
+            !after_host_line.contains("\n#"),
+            "no # lines must appear inside the Host block: {after_host_line:?}"
+        );
+        assert!(
+            !after_host_line.starts_with('#'),
+            "first line after Host must not be a comment: {after_host_line:?}"
+        );
+    }
+
+    /// When `skip_user=true` and the user field is resolved (no template token),
+    /// no `#` lines must appear inside the Host block.
+    #[test]
+    fn test_skip_user_resolved_no_comment_inside_host_block() {
+        let conn = make_conn("srv", "myhost", "deploy", 22, "key", Some("~/.ssh/id_rsa"));
+        let out = render_ssh_config(&[conn], true);
+
+        let host_pos = out.find("Host srv\n").expect("Host line must be present");
+        let block_body = &out[host_pos..];
+        let blank_pos = block_body.find("\n\n").unwrap_or(block_body.len());
+        let block_interior = &block_body[..blank_pos];
+        let after_host_line = &block_interior["Host srv\n".len()..];
+
+        assert!(
+            !after_host_line.contains("\n#"),
+            "no # lines must appear inside the Host block with skip_user=true: {after_host_line:?}"
+        );
+        assert!(
+            !after_host_line.starts_with('#'),
+            "first line after Host must not be a comment: {after_host_line:?}"
+        );
+        assert!(
+            !out.contains("User "),
+            "User line must be absent with skip_user=true"
         );
     }
 }
