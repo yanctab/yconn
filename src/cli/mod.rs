@@ -138,6 +138,13 @@ pub enum Commands {
         subcommand: GroupCommands,
     },
 
+    /// Copy project connections into a target layer (user or system)
+    Install {
+        /// Target layer to install connections into (user or system; project is not allowed)
+        #[arg(long, value_name = "LAYER")]
+        layer: Option<LayerArg>,
+    },
+
     /// Manage SSH config integration (install, print, uninstall, disable, enable)
     SshConfig(SshConfigArgs),
 

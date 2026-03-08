@@ -1791,3 +1791,82 @@ fn show_name_and_dump_together_errors() {
     let out = env.run(&["connections", "show", "web", "--dump"]);
     assert!(!out.status.success(), "expected non-zero exit");
 }
+
+// ─── yconn install ───────────────────────────────────────────────────────────
+
+/// `yconn install` with a project config containing `alpha` and `beta`
+/// installs both into the user layer file.
+#[test]
+fn install_copies_new_connections_to_user_layer() {
+    let env = TestEnv::new();
+
+    env.write_project_config(
+        "connections",
+        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: \"Alpha server\"\n  beta:\n    host: 10.0.0.2\n    user: ops\n    auth: password\n    description: \"Beta server\"\n",
+    );
+
+    let out = env.run(&["install"]);
+    TestEnv::assert_ok(&out);
+
+    let user_config = env.xdg_config.path().join("yconn").join("connections.yaml");
+    assert!(user_config.exists(), "user config must be created");
+
+    let content = fs::read_to_string(&user_config).unwrap();
+    assert!(content.contains("alpha:"), "alpha not found in user config");
+    assert!(content.contains("beta:"), "beta not found in user config");
+    assert!(
+        content.contains("10.0.0.1"),
+        "alpha host not found in user config"
+    );
+    assert!(
+        content.contains("10.0.0.2"),
+        "beta host not found in user config"
+    );
+}
+
+/// `yconn install` with `alpha` already in the user layer and `y` on stdin
+/// updates `alpha` and appends `beta`.
+#[test]
+fn install_updates_existing_with_y_and_appends_new() {
+    let env = TestEnv::new();
+
+    // Project config: alpha (updated host) and beta (new).
+    env.write_project_config(
+        "connections",
+        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.99\n    user: deploy\n    auth: password\n    description: \"Alpha updated\"\n  beta:\n    host: 10.0.0.2\n    user: ops\n    auth: password\n    description: \"Beta server\"\n",
+    );
+
+    // Pre-populate user layer with alpha at old host.
+    env.write_user_config(
+        "connections",
+        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: \"Alpha old\"\n",
+    );
+
+    // Answer `y` to the update prompt for alpha.
+    let out = env.run_with_stdin(&["install"], "y\n");
+    TestEnv::assert_ok(&out);
+
+    let user_config = env.xdg_config.path().join("yconn").join("connections.yaml");
+    let content = fs::read_to_string(&user_config).unwrap();
+
+    assert!(
+        content.contains("10.0.0.99"),
+        "alpha should be updated to new host"
+    );
+    assert!(
+        !content.contains("10.0.0.1"),
+        "old alpha host should be replaced"
+    );
+    assert!(content.contains("beta:"), "beta should be appended");
+    assert!(content.contains("10.0.0.2"), "beta host should be present");
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Updating:"),
+        "expected 'Updating:' in stdout, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Writing:"),
+        "expected 'Writing:' in stdout for beta, got: {stdout}"
+    );
+}
