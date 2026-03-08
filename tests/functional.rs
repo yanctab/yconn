@@ -1229,10 +1229,11 @@ fn connect_user_override_shadows_config_users_entry() {
     );
 }
 
-// ─── yconn users show — username header ──────────────────────────────────────
+// ─── yconn users show — user row (no header) ─────────────────────────────────
 
-/// `yconn users show` prints `Username: alice` when the `users:` map contains
-/// a `user` key with value `alice`.
+/// `yconn users show` does NOT print a `Username:` header. When the `users:`
+/// map contains a `user` key with value `alice`, `alice` appears as a table
+/// row value.
 #[test]
 fn user_show_prints_username_from_map() {
     let env = TestEnv::new();
@@ -1243,13 +1244,18 @@ fn user_show_prints_username_from_map() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("Username: alice"),
-        "expected 'Username: alice' in output: {stdout}"
+        !stdout.contains("Username:"),
+        "should not print 'Username:' header: {stdout}"
+    );
+    assert!(
+        stdout.contains("alice"),
+        "expected 'alice' as a table row value: {stdout}"
     );
 }
 
-/// `yconn users show` prints `Username: bob` when no `user` key exists in the
-/// `users:` map but the `USER` environment variable is set to `bob`.
+/// `yconn users show` does NOT print a `Username:` header. When no `user` key
+/// exists in the `users:` map but `USER=bob`, a synthetic row appears with
+/// `bob` as the value and SOURCE containing `environment variable $USER`.
 #[test]
 fn user_show_prints_username_from_env_var() {
     let env = TestEnv::new();
@@ -1259,8 +1265,16 @@ fn user_show_prints_username_from_env_var() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("Username: bob"),
-        "expected 'Username: bob' in output: {stdout}"
+        !stdout.contains("Username:"),
+        "should not print 'Username:' header: {stdout}"
+    );
+    assert!(
+        stdout.contains("bob"),
+        "expected 'bob' as a table row value: {stdout}"
+    );
+    assert!(
+        stdout.contains("environment variable $USER"),
+        "expected env-var source label in output: {stdout}"
     );
 }
 

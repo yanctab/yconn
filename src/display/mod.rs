@@ -305,7 +305,7 @@ impl Renderer {
     // ── user list ─────────────────────────────────────────────────────────────
 
     fn render_user_list(&self, rows: &[UserRow]) -> String {
-        const HEADERS: [&str; 3] = ["KEY", "VALUE", "SOURCE"];
+        const HEADERS: [&str; 3] = ["VARIABLE", "VALUE", "SOURCE"];
         const GAP: &str = "   ";
 
         let mut col = [
@@ -314,7 +314,7 @@ impl Renderer {
             0usize, // source — not padded (last col)
         ];
         for row in rows {
-            col[0] = col[0].max(row.key.len());
+            col[0] = col[0].max(row.key.len() + 3); // "${" + key + "}"
             col[1] = col[1].max(row.value.len());
         }
 
@@ -338,7 +338,9 @@ impl Renderer {
             } else {
                 row.source.clone()
             };
-            let cells: Vec<String> = vec![pad(&row.key, col[0]), pad(&row.value, col[1]), source];
+            let key_display = format!("${{{}}}", row.key);
+            let cells: Vec<String> =
+                vec![pad(&key_display, col[0]), pad(&row.value, col[1]), source];
             let line = cells.join(GAP);
             if row.shadowed {
                 out.push_str(&self.maybe_dim(&line));
@@ -445,30 +447,12 @@ impl Renderer {
         print!("{}", self.render_config_status(status));
     }
 
-    /// Print the `Username: <value>` header line followed by a blank line.
-    ///
-    /// Called before [`user_list`] so the resolved username appears above the
-    /// table.  The header is always printed, even when `username` is empty.
-    pub fn print_username_header(&self, username: &str) {
-        println!("Username: {username}");
-        println!();
-    }
-
     /// Print the user list table (`yconn users show`).
     ///
-    /// Accepts a slice of [`crate::config::UserEntry`] directly to avoid
-    /// requiring callers to construct [`UserRow`] manually.
-    pub fn user_list(&self, entries: &[crate::config::UserEntry]) {
-        let rows: Vec<UserRow> = entries
-            .iter()
-            .map(|e| UserRow {
-                key: e.key.clone(),
-                value: e.value.clone(),
-                source: format!("{} ({})", e.layer.label(), e.source_path.display()),
-                shadowed: e.shadowed,
-            })
-            .collect();
-        print!("{}", self.render_user_list(&rows));
+    /// Accepts a slice of [`UserRow`] so callers can inject synthetic rows
+    /// (e.g. an env-var fallback for the `user` key).
+    pub fn user_list(&self, rows: &[UserRow]) {
+        print!("{}", self.render_user_list(rows));
     }
 
     /// Print the group list table (`yconn group list`).
