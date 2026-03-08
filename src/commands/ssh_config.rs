@@ -323,9 +323,7 @@ pub fn run_generate(
             // suggest the fix command.  The expanded value still contains the
             // original `${key}` token when the key could not be resolved.
             let fix = extract_unresolved_key(&expanded)
-                .map(|key| {
-                    format!("  Fix: yconn users add --user {key}:<value>")
-                })
+                .map(|key| format!("  Fix: yconn users add --user {key}:<value>"))
                 .unwrap_or_default();
             if fix.is_empty() {
                 renderer.warn(w);
