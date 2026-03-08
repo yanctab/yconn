@@ -167,7 +167,7 @@ fn prompt_choice(
 
 // ─── YAML construction ────────────────────────────────────────────────────────
 
-fn build_entry(
+pub(crate) fn build_entry(
     host: &str,
     user: &str,
     port: u16,
@@ -197,7 +197,7 @@ fn build_entry(
 }
 
 /// Append (or create) the entry in the target YAML file under `connections:`.
-fn write_entry(target: &Path, name: &str, entry: &str) -> Result<()> {
+pub(crate) fn write_entry(target: &Path, name: &str, entry: &str) -> Result<()> {
     // Ensure the directory exists.
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)
@@ -233,7 +233,7 @@ fn write_entry(target: &Path, name: &str, entry: &str) -> Result<()> {
 ///
 /// This is a no-op on non-Unix platforms where the concept does not apply.
 #[cfg(unix)]
-fn set_private_permissions(path: &Path) -> Result<()> {
+pub(crate) fn set_private_permissions(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let perms = std::fs::Permissions::from_mode(0o600);
     std::fs::set_permissions(path, perms)
@@ -241,12 +241,12 @@ fn set_private_permissions(path: &Path) -> Result<()> {
 }
 
 #[cfg(not(unix))]
-fn set_private_permissions(_path: &Path) -> Result<()> {
+pub(crate) fn set_private_permissions(_path: &Path) -> Result<()> {
     Ok(())
 }
 
 /// Return `true` if a connections key named `name` already appears in `content`.
-fn entry_exists(content: &str, name: &str) -> bool {
+pub(crate) fn entry_exists(content: &str, name: &str) -> bool {
     // Simple line-based scan: look for "  <name>:" at the start of a line.
     let pattern = format!("  {name}:");
     content
@@ -259,7 +259,7 @@ fn entry_exists(content: &str, name: &str) -> bool {
 /// If a `connections:` line is found we append after the last line of
 /// the connections block (i.e. at end of file). Otherwise we append a
 /// new `connections:` section at the end.
-fn insert_connection(content: &str, name: &str, entry: &str) -> String {
+pub(crate) fn insert_connection(content: &str, name: &str, entry: &str) -> String {
     let new_block = format!("  {name}:\n{entry}");
 
     // If there is already a `connections:` key, append to the end of the file.

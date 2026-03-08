@@ -76,6 +76,7 @@ yconn groups use work
 | `yconn connections edit <name>` | Open the connection's source config file in `$EDITOR` |
 | `yconn connections remove <name>` | Remove a connection (prompts for layer if ambiguous) |
 | `yconn connections init` | Scaffold a `<group>.yaml` in `.yconn/` in the current directory |
+| `yconn install` | Copy project connections into the user (or system) layer |
 | `yconn config` | Show active config files, their paths, and Docker status |
 | `yconn groups list` | Show all groups found across all layers |
 | `yconn groups use <name>` | Set the active group |

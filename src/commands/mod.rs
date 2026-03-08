@@ -7,6 +7,7 @@ pub mod connect;
 pub mod edit;
 pub mod group;
 pub mod init;
+pub mod install;
 pub mod list;
 pub mod remove;
 pub mod show;

@@ -79,6 +79,10 @@ fn main() -> Result<()> {
             let overrides = parse_user_overrides(&user_overrides)?;
             commands::connect::run(&cfg, &renderer, &name, verbose, &overrides)
         }
+        Commands::Install { layer } => {
+            let cfg = load_and_warn(&renderer, verbose)?;
+            commands::install::run(&cfg, layer)
+        }
         Commands::SshConfig(SshConfigArgs { subcommand }) => {
             let home = dirs::home_dir()
                 .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?;
