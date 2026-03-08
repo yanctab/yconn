@@ -340,7 +340,10 @@ pub fn run_generate(
     write_secure(&out_path, &format!("{merged}\n"))?;
     inject_include(home)?;
 
-    println!("Wrote {block_count} Host block(s) to {}", out_path.display());
+    println!(
+        "Wrote {block_count} Host block(s) to {}",
+        out_path.display()
+    );
 
     Ok(())
 }
@@ -782,7 +785,8 @@ mod tests {
         assert_eq!(existing.len(), 3);
 
         // New blocks contain only prod-web (updated).
-        let new_content = "# description: new prod\n# auth: key\nHost prod-web\n    HostName 10.0.1.50\n";
+        let new_content =
+            "# description: new prod\n# auth: key\nHost prod-web\n    HostName 10.0.1.50\n";
         let new_blocks = parse_host_blocks(new_content);
 
         let merged = merge_host_blocks(existing, new_blocks);
@@ -843,10 +847,12 @@ mod tests {
     /// after the existing blocks.
     #[test]
     fn test_merge_new_blocks_appended_after_existing() {
-        let existing_content = "# description: foreign\n# auth: key\nHost foreign-1\n    HostName f1.example.com\n\n";
+        let existing_content =
+            "# description: foreign\n# auth: key\nHost foreign-1\n    HostName f1.example.com\n\n";
         let existing = parse_host_blocks(existing_content);
 
-        let new_content = "# description: prod\n# auth: key\nHost prod-web\n    HostName 10.0.1.50\n";
+        let new_content =
+            "# description: prod\n# auth: key\nHost prod-web\n    HostName 10.0.1.50\n";
         let new_blocks = parse_host_blocks(new_content);
 
         let merged = merge_host_blocks(existing, new_blocks);
