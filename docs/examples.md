@@ -545,6 +545,10 @@ yconn users add
 # Add to the project layer instead
 yconn users add --layer project
 
+# Add entries directly without the wizard (repeatable)
+yconn users add --user testuser:alice --user deploy:bob
+yconn users add --layer project --user testuser:carol
+
 # Edit the source file for a named entry
 yconn users edit testuser
 

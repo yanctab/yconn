@@ -165,11 +165,16 @@ pub enum UserCommands {
     /// List all user entries across all layers (with shadowing info)
     Show,
 
-    /// Interactive wizard to add a user entry to a chosen layer
+    /// Interactive wizard to add a user entry to a chosen layer.
+    /// When --user is supplied the wizard is skipped entirely.
     Add {
         /// Target a specific config layer
         #[arg(long, value_name = "LAYER")]
         layer: Option<LayerArg>,
+        /// Insert a key:value pair directly, bypassing the interactive wizard (repeatable).
+        /// Format: KEY:VALUE — both sides must be non-empty.
+        #[arg(long = "user", value_name = "KEY:VALUE", action = clap::ArgAction::Append)]
+        user_pairs: Vec<String>,
     },
 
     /// Open the source config file for a named user entry in $EDITOR

@@ -56,19 +56,75 @@ fn build_user_rows(cfg: &LoadedConfig, env_user: Option<&str>) -> Vec<UserRow> {
     rows
 }
 
-/// `yconn users add` — interactive wizard to add a user entry to a layer.
-pub fn add(layer: Option<LayerArg>) -> Result<()> {
+/// `yconn users add` — add a user entry to a layer.
+///
+/// When `user_pairs` is non-empty each element must be `KEY:VALUE` (both sides
+/// non-empty, colon required). All pairs are validated upfront and then written
+/// without any interactive prompting.
+///
+/// When `user_pairs` is empty the interactive wizard is run instead.
+pub fn add(layer: Option<LayerArg>, user_pairs: Vec<String>) -> Result<()> {
     let target_layer = layer_arg_to_layer(layer);
     let target_dir = layer_path(target_layer)?;
 
-    let stdin = io::stdin();
-    let stdout = io::stdout();
-    add_impl(
-        target_layer,
-        &target_dir,
-        &mut stdin.lock(),
-        &mut stdout.lock(),
-    )
+    if user_pairs.is_empty() {
+        let stdin = io::stdin();
+        let stdout = io::stdout();
+        add_impl(
+            target_layer,
+            &target_dir,
+            &mut stdin.lock(),
+            &mut stdout.lock(),
+        )
+    } else {
+        let parsed = parse_user_pairs(&user_pairs)?;
+        add_pairs(target_layer, &target_dir, &parsed)
+    }
+}
+
+/// Parse and validate `KEY:VALUE` strings from `--user` flags.
+///
+/// Returns an error for any entry that:
+/// - contains no colon
+/// - has an empty key (left side)
+/// - has an empty value (right side)
+pub(crate) fn parse_user_pairs(pairs: &[String]) -> Result<Vec<(String, String)>> {
+    pairs
+        .iter()
+        .map(|s| {
+            match s.split_once(':') {
+                Some((key, value)) => {
+                    if key.is_empty() {
+                        anyhow::bail!("--user value '{}': key must not be empty", s);
+                    }
+                    if value.is_empty() {
+                        anyhow::bail!("--user value '{}': value must not be empty", s);
+                    }
+                    Ok((key.to_string(), value.to_string()))
+                }
+                None => {
+                    anyhow::bail!(
+                        "--user value '{}' is invalid: expected format KEY:VALUE",
+                        s
+                    );
+                }
+            }
+        })
+        .collect()
+}
+
+/// Write a list of `(key, value)` pairs to the target layer without prompting.
+fn add_pairs(_layer: Layer, layer_dir: &Path, pairs: &[(String, String)]) -> Result<()> {
+    let target = layer_dir.join("connections.yaml");
+
+    for (key, value) in pairs {
+        write_user_entry(&target, key, value).with_context(|| {
+            format!("failed to write user entry '{key}'")
+        })?;
+        println!("Added user entry '{key}' to {}", target.display());
+    }
+
+    Ok(())
 }
 
 /// `yconn users edit` — open the source config file for a named user entry in
@@ -515,5 +571,94 @@ mod tests {
             rows.iter().all(|r| r.key != "user"),
             "should have no user row when both absent"
         );
+    }
+
+    // ── parse_user_pairs ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_user_pairs_single_entry() {
+        let pairs = vec!["alice:wonderland".to_string()];
+        let result = parse_user_pairs(&pairs).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], ("alice".to_string(), "wonderland".to_string()));
+    }
+
+    #[test]
+    fn test_parse_user_pairs_multiple_entries() {
+        let pairs = vec![
+            "key1:val1".to_string(),
+            "key2:val2".to_string(),
+            "key3:val3".to_string(),
+        ];
+        let result = parse_user_pairs(&pairs).unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0], ("key1".to_string(), "val1".to_string()));
+        assert_eq!(result[1], ("key2".to_string(), "val2".to_string()));
+        assert_eq!(result[2], ("key3".to_string(), "val3".to_string()));
+    }
+
+    #[test]
+    fn test_parse_user_pairs_missing_colon_is_error() {
+        let pairs = vec!["nocolon".to_string()];
+        let err = parse_user_pairs(&pairs).unwrap_err();
+        assert!(
+            err.to_string().contains("KEY:VALUE"),
+            "error should mention expected format: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_parse_user_pairs_empty_key_is_error() {
+        let pairs = vec![":value".to_string()];
+        let err = parse_user_pairs(&pairs).unwrap_err();
+        assert!(
+            err.to_string().contains("key must not be empty"),
+            "error should mention empty key: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_parse_user_pairs_empty_value_is_error() {
+        let pairs = vec!["key:".to_string()];
+        let err = parse_user_pairs(&pairs).unwrap_err();
+        assert!(
+            err.to_string().contains("value must not be empty"),
+            "error should mention empty value: {}",
+            err
+        );
+    }
+
+    // ── add_pairs (--user non-wizard path) ────────────────────────────────────
+
+    #[test]
+    fn test_add_pairs_single_entry_creates_file() {
+        let dir = TempDir::new().unwrap();
+        let pairs = vec![("mykey".to_string(), "myval".to_string())];
+        add_pairs(Layer::User, dir.path(), &pairs).unwrap();
+
+        let target = dir.path().join("connections.yaml");
+        assert!(target.exists());
+        let content = fs::read_to_string(&target).unwrap();
+        assert!(content.contains("users:"));
+        assert!(content.contains("mykey:"));
+        assert!(content.contains("myval"));
+    }
+
+    #[test]
+    fn test_add_pairs_multiple_entries_all_written() {
+        let dir = TempDir::new().unwrap();
+        let pairs = vec![
+            ("k1".to_string(), "v1".to_string()),
+            ("k2".to_string(), "v2".to_string()),
+        ];
+        add_pairs(Layer::User, dir.path(), &pairs).unwrap();
+
+        let content = fs::read_to_string(dir.path().join("connections.yaml")).unwrap();
+        assert!(content.contains("k1:"));
+        assert!(content.contains("v1"));
+        assert!(content.contains("k2:"));
+        assert!(content.contains("v2"));
     }
 }
