@@ -1128,6 +1128,32 @@ fn ssh_config_skip_user_omits_user_lines() {
     );
 }
 
+/// `yconn ssh-config` with an unresolved `${t1user}` template emits a warning
+/// on stderr that contains both "unresolved" and the fix command
+/// `yconn users add --user t1user:<value>`.
+#[test]
+fn ssh_config_unresolved_user_template_emits_fix_command_in_warning() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth: password\n    description: test\n",
+    );
+
+    // Run without --dry-run; the warning should appear on stderr regardless.
+    let out = env.run(&["ssh-config"]);
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("unresolved"),
+        "expected 'unresolved' in stderr, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("yconn users add --user t1user:<value>"),
+        "expected fix command in stderr, got: {stderr}"
+    );
+}
+
 /// `yconn ssh-config` preserves a pre-existing foreign Host block in
 /// `~/.ssh/yconn-connections` and adds the new blocks alongside it.
 #[test]

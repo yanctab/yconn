@@ -288,6 +288,22 @@ fn merge_host_blocks(existing: Vec<HostBlock>, new_blocks: Vec<HostBlock>) -> St
     merged
 }
 
+// ─── Warning helpers ──────────────────────────────────────────────────────────
+
+/// Extract the first unresolved template key from a user field value.
+///
+/// When `expand_user_field` cannot resolve a `${key}` token it leaves the
+/// token unchanged in the returned string.  This helper finds the first such
+/// token and returns the key name so the caller can compose a fix command.
+///
+/// Returns `None` if no `${...}` token is present.
+fn extract_unresolved_key(value: &str) -> Option<&str> {
+    let start = value.find("${")?;
+    let rest = &value[start + 2..];
+    let end = rest.find('}')?;
+    Some(&rest[..end])
+}
+
 // ─── Command entry points ─────────────────────────────────────────────────────
 
 pub fn run_generate(
@@ -303,7 +319,17 @@ pub fn run_generate(
     for conn in &mut connections {
         let (expanded, warnings) = cfg.expand_user_field(&conn.user, inline_overrides);
         for w in &warnings {
-            renderer.warn(w);
+            // Extract the unresolved key from the expanded user field so we can
+            // suggest the fix command.  The expanded value still contains the
+            // original `${key}` token when the key could not be resolved.
+            let fix = extract_unresolved_key(&expanded)
+                .map(|key| format!("  Fix: yconn users add --user {key}:<value>"))
+                .unwrap_or_default();
+            if fix.is_empty() {
+                renderer.warn(w);
+            } else {
+                renderer.warn(&format!("{w}\n{fix}"));
+            }
         }
         conn.user = expanded;
     }
@@ -695,6 +721,36 @@ mod tests {
             warnings[0].contains("unresolved"),
             "warning must say unresolved: {}",
             warnings[0]
+        );
+    }
+
+    #[test]
+    fn test_unresolved_template_warning_contains_fix_command() {
+        // run_generate enriches warnings with the fix command at its call site.
+        // We test extract_unresolved_key directly here, and verify that the
+        // enrichment logic produces the expected fix string.
+        assert_eq!(
+            super::extract_unresolved_key("${t1user}"),
+            Some("t1user"),
+            "must extract key from simple token"
+        );
+        assert_eq!(
+            super::extract_unresolved_key("${t1user}.suffix"),
+            Some("t1user"),
+            "must extract key when followed by extra text"
+        );
+        assert_eq!(
+            super::extract_unresolved_key("no_template"),
+            None,
+            "must return None when no template present"
+        );
+
+        // Verify the enriched warning format for a known key.
+        let key = super::extract_unresolved_key("${t1user}").unwrap();
+        let fix = format!("  Fix: yconn users add --user {key}:<value>");
+        assert!(
+            fix.contains("yconn users add --user t1user:<value>"),
+            "fix command must match expected format: {fix}"
         );
     }
 
