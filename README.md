@@ -49,10 +49,10 @@ cargo install yconn
 
 ```bash
 # Scaffold a project config in the current directory
-yconn init
+yconn connections init
 
 # Add a connection interactively
-yconn add
+yconn connections add
 
 # List all connections
 yconn list
@@ -70,11 +70,12 @@ yconn groups use work
 |---|---|
 | `yconn list` | List all connections across all layers |
 | `yconn connect <name>` | Connect to a named host |
-| `yconn show <name>` | Show resolved config for a connection (no secrets printed) |
-| `yconn add` | Interactive wizard to add a connection to a chosen layer |
-| `yconn edit <name>` | Open the connection's source config file in `$EDITOR` |
-| `yconn remove <name>` | Remove a connection (prompts for layer if ambiguous) |
-| `yconn init` | Scaffold a `<group>.yaml` in `.yconn/` in the current directory |
+| `yconn connections show <name>` | Show resolved config for a connection (no secrets printed) |
+| `yconn connections show --dump` | Print the fully merged connections and users maps as YAML |
+| `yconn connections add` | Interactive wizard to add a connection to a chosen layer |
+| `yconn connections edit <name>` | Open the connection's source config file in `$EDITOR` |
+| `yconn connections remove <name>` | Remove a connection (prompts for layer if ambiguous) |
+| `yconn connections init` | Scaffold a `<group>.yaml` in `.yconn/` in the current directory |
 | `yconn config` | Show active config files, their paths, and Docker status |
 | `yconn groups list` | Show all groups found across all layers |
 | `yconn groups use <name>` | Set the active group |
@@ -87,7 +88,7 @@ yconn groups use work
 
 Global flags: `--all`, `--verbose`
 
-Per-subcommand flags: `--layer system|user|project` (for `add`, `edit`, `remove`, `user add`, `user edit`)
+Per-subcommand flags: `--layer system|user|project` (for `connections add`, `connections edit`, `connections remove`, `users add`, `users edit`)
 
 ## Development
 

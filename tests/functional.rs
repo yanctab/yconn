@@ -531,8 +531,8 @@ fn no_docker_block_uses_ssh() {
 
 // ─── Add round-trip and edit invocation ──────────────────────────────────────
 
-/// `yconn add` (piped stdin) → `yconn list` then `yconn show` successfully
-/// display the newly created connection, verifying the YAML is valid and
+/// `yconn connections add` (piped stdin) → `yconn list` then `yconn connections show`
+/// successfully display the newly created connection, verifying the YAML is valid and
 /// parseable after the add wizard writes it.
 #[test]
 fn add_round_trip_list_and_show() {
@@ -543,8 +543,8 @@ fn add_round_trip_list_and_show() {
     let key = env.write_key("id_rsa");
     let stdin_data = format!("myconn\nmyhost.internal\ndeploy\n\nkey\n{key}\nMy server\n\n");
 
-    // `yconn add --layer user` — writes to xdg_config/yconn/connections.yaml.
-    let out = env.run_with_stdin(&["add", "--layer", "user"], &stdin_data);
+    // `yconn connections add --layer user` — writes to xdg_config/yconn/connections.yaml.
+    let out = env.run_with_stdin(&["connections", "add", "--layer", "user"], &stdin_data);
     TestEnv::assert_ok(&out);
 
     // `yconn list` should show the new connection.
@@ -560,8 +560,8 @@ fn add_round_trip_list_and_show() {
         "expected 'myhost.internal' in list output, got: {list_stdout}"
     );
 
-    // `yconn show myconn` should succeed and display the connection detail.
-    let show_out = env.run(&["show", "myconn"]);
+    // `yconn connections show myconn` should succeed and display the connection detail.
+    let show_out = env.run(&["connections", "show", "myconn"]);
     TestEnv::assert_ok(&show_out);
     let show_stdout = String::from_utf8_lossy(&show_out.stdout);
     assert!(
@@ -578,8 +578,8 @@ fn add_round_trip_list_and_show() {
     );
 }
 
-/// `yconn add` for password auth writes a valid, parseable YAML entry with
-/// no `key:` field, verified by `yconn show` succeeding afterwards.
+/// `yconn connections add` for password auth writes a valid, parseable YAML entry with
+/// no `key:` field, verified by `yconn connections show` succeeding afterwards.
 #[test]
 fn add_password_auth_round_trip() {
     let env = TestEnv::new();
@@ -587,11 +587,11 @@ fn add_password_auth_round_trip() {
     // Wizard answers: name, host, user, port, auth=password, description, link.
     let stdin_data = "dbconn\ndb.internal\ndbadmin\n\npassword\nDatabase server\n\n";
 
-    let out = env.run_with_stdin(&["add", "--layer", "user"], stdin_data);
+    let out = env.run_with_stdin(&["connections", "add", "--layer", "user"], stdin_data);
     TestEnv::assert_ok(&out);
 
     // Verify the written YAML is parseable by running show.
-    let show_out = env.run(&["show", "dbconn"]);
+    let show_out = env.run(&["connections", "show", "dbconn"]);
     TestEnv::assert_ok(&show_out);
     let show_stdout = String::from_utf8_lossy(&show_out.stdout);
     assert!(
@@ -612,7 +612,7 @@ fn add_password_auth_round_trip() {
     );
 }
 
-/// `yconn edit <name>` invokes `$EDITOR` with the correct config file path.
+/// `yconn connections edit <name>` invokes `$EDITOR` with the correct config file path.
 /// The mock editor exits 0 without modifying the file, confirming the file
 /// remains parseable after the editor exits.
 #[test]
@@ -635,7 +635,7 @@ fn edit_invokes_editor_with_correct_file_path() {
         std::env::var("PATH").unwrap_or_default()
     );
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_yconn"))
-        .args(["edit", "my-srv"])
+        .args(["connections", "edit", "my-srv"])
         .env("PATH", path)
         .env("XDG_CONFIG_HOME", env.xdg_config.path())
         .env("HOME", env.home.path())
@@ -648,8 +648,8 @@ fn edit_invokes_editor_with_correct_file_path() {
     TestEnv::assert_ok(&out);
 
     // After the mock editor runs (no-op), the file must still be parseable —
-    // verify by running `yconn show my-srv`.
-    let show_out = env.run(&["show", "my-srv"]);
+    // verify by running `yconn connections show my-srv`.
+    let show_out = env.run(&["connections", "show", "my-srv"]);
     TestEnv::assert_ok(&show_out);
     let show_stdout = String::from_utf8_lossy(&show_out.stdout);
     assert!(
@@ -658,7 +658,7 @@ fn edit_invokes_editor_with_correct_file_path() {
     );
 
     // The edit command should mention the target file path in its output.
-    // (yconn edit opens the editor; the path is passed as the arg to $EDITOR,
+    // (yconn connections edit opens the editor; the path is passed as the arg to $EDITOR,
     //  but mock-editor doesn't echo its args — so we just verify exit was 0
     //  and the file is still accessible.)
     let _ = expected_path; // path confirmed parseable via show above
@@ -1280,7 +1280,7 @@ fn user_show_prints_username_from_env_var() {
 
 // ─── show --dump ──────────────────────────────────────────────────────────────
 
-/// `yconn show --dump` outputs valid YAML containing all connection names and user keys.
+/// `yconn connections show --dump` outputs valid YAML containing all connection names and user keys.
 #[test]
 fn show_dump_outputs_merged_config_as_yaml() {
     let env = TestEnv::new();
@@ -1288,7 +1288,7 @@ fn show_dump_outputs_merged_config_as_yaml() {
         "connections",
         "connections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Production\n  staging:\n    host: 10.0.0.2\n    user: admin\n    auth: password\n    description: Staging\nusers:\n  testuser: alice\n  mybot: botuser\n",
     );
-    let out = env.run(&["show", "--dump"]);
+    let out = env.run(&["connections", "show", "--dump"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -1301,11 +1301,11 @@ fn show_dump_outputs_merged_config_as_yaml() {
     assert!(stdout.contains("mybot:"), "missing mybot key");
 }
 
-/// `yconn show --dump` with no config outputs empty-but-valid YAML.
+/// `yconn connections show --dump` with no config outputs empty-but-valid YAML.
 #[test]
 fn show_dump_empty_config_produces_valid_yaml() {
     let env = TestEnv::new();
-    let out = env.run(&["show", "--dump"]);
+    let out = env.run(&["connections", "show", "--dump"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -1313,7 +1313,7 @@ fn show_dump_empty_config_produces_valid_yaml() {
     assert!(stdout.contains("users:"), "missing users: key");
 }
 
-/// `yconn show <name>` still works (name is still accepted).
+/// `yconn connections show <name>` still works (name is still accepted).
 #[test]
 fn show_name_still_works_after_dump_flag_added() {
     let env = TestEnv::new();
@@ -1321,22 +1321,22 @@ fn show_name_still_works_after_dump_flag_added() {
         "connections",
         "connections:\n  web:\n    host: 1.2.3.4\n    user: ops\n    auth: password\n    description: Web\n",
     );
-    let out = env.run(&["show", "web"]);
+    let out = env.run(&["connections", "show", "web"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("Connection: web"));
 }
 
-/// `yconn show` with neither name nor --dump exits with an error.
+/// `yconn connections show` with neither name nor --dump exits with an error.
 #[test]
 fn show_no_args_errors() {
     let env = TestEnv::new();
-    let out = env.run(&["show"]);
+    let out = env.run(&["connections", "show"]);
     assert!(!out.status.success(), "expected non-zero exit");
 }
 
-/// `yconn show <name> --dump` is rejected (mutually exclusive).
+/// `yconn connections show <name> --dump` is rejected (mutually exclusive).
 #[test]
 fn show_name_and_dump_together_errors() {
     let env = TestEnv::new();
@@ -1344,6 +1344,6 @@ fn show_name_and_dump_together_errors() {
         "connections",
         "connections:\n  web:\n    host: 1.2.3.4\n    user: ops\n    auth: password\n    description: Web\n",
     );
-    let out = env.run(&["show", "web", "--dump"]);
+    let out = env.run(&["connections", "show", "web", "--dump"]);
     assert!(!out.status.success(), "expected non-zero exit");
 }

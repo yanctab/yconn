@@ -53,24 +53,7 @@ pub enum InitLocation {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum Commands {
-    /// List all connections across all layers
-    List {
-        /// Filter output to connections whose group field equals NAME
-        #[arg(long, value_name = "NAME")]
-        group: Option<String>,
-    },
-
-    /// Connect to a named host
-    Connect {
-        /// Name of the connection to open
-        name: String,
-        /// Override or add a users: map entry for this invocation (repeatable).
-        /// Format: key:value. Use --user user:<name> to override ${user} expansion.
-        #[arg(long = "user", value_name = "KEY:VALUE", action = clap::ArgAction::Append)]
-        user_overrides: Vec<String>,
-    },
-
+pub enum ConnectionCommands {
     /// Show the resolved config for a connection (no secrets printed)
     Show {
         /// Name of the connection to inspect. Required unless --dump is set.
@@ -118,6 +101,32 @@ pub enum Commands {
         /// plain   → connections.yaml in cwd (may clash with other tools)
         #[arg(long, value_enum, default_value = "yconn")]
         location: InitLocation,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Commands {
+    /// List all connections across all layers
+    List {
+        /// Filter output to connections whose group field equals NAME
+        #[arg(long, value_name = "NAME")]
+        group: Option<String>,
+    },
+
+    /// Connect to a named host
+    Connect {
+        /// Name of the connection to open
+        name: String,
+        /// Override or add a users: map entry for this invocation (repeatable).
+        /// Format: key:value. Use --user user:<name> to override ${user} expansion.
+        #[arg(long = "user", value_name = "KEY:VALUE", action = clap::ArgAction::Append)]
+        user_overrides: Vec<String>,
+    },
+
+    /// Manage connections: show, add, edit, remove, init
+    Connections {
+        #[command(subcommand)]
+        subcommand: ConnectionCommands,
     },
 
     /// Show which config files are active, their paths, and Docker status

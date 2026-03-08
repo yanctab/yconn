@@ -55,23 +55,28 @@ keys to be pre-baked into an image rather than distributed to developer machines
   if it contains `${name}`, that token is replaced with the input; otherwise
   the input string is used directly as the hostname.
 
-**show** *NAME*
+**connections show** *NAME*
 : Print the resolved config for a connection. Credentials (key paths) are shown
   as configured; passwords are never stored and are not shown.
 
-**add**
+**connections show --dump**
+: Print the fully merged `connections:` and `users:` maps as valid YAML to stdout.
+  Active entries only — no shadowed rows. Mutually exclusive with providing a
+  connection name.
+
+**connections add**
 : Interactive wizard that prompts for connection details and writes the entry to
   a chosen layer. Use **--layer** to target a specific layer.
 
-**edit** *NAME*
+**connections edit** *NAME*
 : Open the source config file that defines *NAME* in **$EDITOR**.
   Use **--layer** to target a specific layer.
 
-**remove** *NAME*
+**connections remove** *NAME*
 : Remove a connection. Prompts for which layer to target if the name exists in
   more than one layer. Use **--layer** to target a specific layer.
 
-**init**
+**connections init**
 : Scaffold a `connections.yaml` in the current directory. The **--location** flag
   controls where the file is placed:
 
@@ -153,9 +158,9 @@ keys to be pre-baked into an image rather than distributed to developer machines
 **--version**
 : Print version and exit.
 
-The **--layer** *system*|*user*|*project* flag applies only to **add**, **edit**,
-**remove**, **users add**, and **users edit** — it is a per-subcommand flag, not a
-global option.
+The **--layer** *system*|*user*|*project* flag applies only to **connections add**,
+**connections edit**, **connections remove**, **users add**, and **users edit** — it is
+a per-subcommand flag, not a global option.
 
 # CONFIGURATION
 
@@ -217,7 +222,7 @@ system priority as connections.
 3. Unresolved templates: if a `${key}` token cannot be resolved, a warning is emitted to stderr
    and the literal token is passed through unchanged (non-blocking).
 
-**`yconn show`** displays raw unexpanded field values — templates are never expanded in show output.
+**`yconn connections show`** displays raw unexpanded field values — templates are never expanded in show output.
 
 **Per-invocation overrides:** both **yconn connect** and **yconn ssh-config** accept
 **--user** *KEY:VALUE* (repeatable) to override or add entries in the `users:` map for that
@@ -290,19 +295,19 @@ Show all details for a connection (including shadowed):
 
 ```
 yconn list --all
-yconn show bastion
+yconn connections show bastion
 ```
 
 Add a connection interactively to the project layer:
 
 ```
-yconn add --layer project
+yconn connections add --layer project
 ```
 
 Edit the config file that defines a connection:
 
 ```
-yconn edit staging-db
+yconn connections edit staging-db
 ```
 
 Switch active group and verify:
@@ -321,9 +326,9 @@ yconn config
 Scaffold a project config at different locations:
 
 ```
-yconn init                        # creates .yconn/connections.yaml (default)
-yconn init --location dotfile     # creates .connections.yaml
-yconn init --location plain       # creates connections.yaml
+yconn connections init                        # creates .yconn/connections.yaml (default)
+yconn connections init --location dotfile     # creates .connections.yaml
+yconn connections init --location plain       # creates connections.yaml
 ```
 
 Generate SSH config (writes Host blocks to `~/.ssh/yconn-connections`):

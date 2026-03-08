@@ -52,13 +52,13 @@ connections:
 
 ```bash
 # Scaffold the .yconn/ directory and connections.yaml in the current directory
-yconn init
+yconn connections init
 
 # List all connections
 yconn list
 
 # Show full details for a connection
-yconn show prod-web
+yconn connections show prod-web
 
 # Connect
 yconn connect prod-web
@@ -131,7 +131,7 @@ connections:
 yconn list
 
 # See where prod-web comes from
-yconn show prod-web
+yconn connections show prod-web
 # Source: user (/home/you/.config/yconn/connections.yaml)
 
 # See all entries including the shadowed team version
@@ -394,7 +394,7 @@ yconn connect app5
 yconn connect bastion
 
 # Show which pattern covers a given input (shows pattern name in source field)
-yconn show web-prod-01
+yconn connections show web-prod-01
 ```
 
 **How pattern matching works:**
@@ -444,28 +444,28 @@ The three `--location` values and their resulting paths:
 
 ```bash
 # Default — creates .yconn/connections.yaml
-yconn init
+yconn connections init
 
 # Dotfile convention — creates .connections.yaml in the current directory
-yconn init --location dotfile
+yconn connections init --location dotfile
 
 # Plain — creates connections.yaml in the current directory
-yconn init --location plain
+yconn connections init --location plain
 ```
 
 **Resulting file trees:**
 
 ```
-# yconn init (default)
+# yconn connections init (default)
 your-project/
 └── .yconn/
     └── connections.yaml
 
-# yconn init --location dotfile
+# yconn connections init --location dotfile
 your-project/
 └── .connections.yaml
 
-# yconn init --location plain
+# yconn connections init --location plain
 your-project/
 └── connections.yaml
 ```
@@ -486,8 +486,8 @@ directory and checks again.
 
 - All three conventions are recognised by the upward walk — you can mix conventions
   across different projects.
-- `yconn init` fails with a clear error if the target file already exists.
-- After running `yconn init`, edit the scaffolded file and run `yconn list` to verify.
+- `yconn connections init` fails with a clear error if the target file already exists.
+- After running `yconn connections init`, edit the scaffolded file and run `yconn list` to verify.
 
 ---
 
@@ -532,8 +532,8 @@ yconn connect prod-web --user testuser:alice
 # Override the ${user} env-var expansion for this invocation
 yconn connect staging --user user:alice
 
-# Inspect raw config values — yconn show does NOT expand templates
-yconn show prod-web
+# Inspect raw config values — yconn connections show does NOT expand templates
+yconn connections show prod-web
 # User: ${testuser}   ← raw value, not expanded
 
 # List all user entries across all layers (with source and shadowing info)
@@ -566,7 +566,7 @@ yconn ssh-config --user testuser:alice
   expansion is a separate fallback step.
 - If a `${key}` token cannot be resolved after all expansion steps, a warning is emitted to
   stderr and the literal template string is passed through unchanged to SSH.
-- `yconn show` prints raw unexpanded field values — it never expands templates.
+- `yconn connections show` prints raw unexpanded field values — it never expands templates.
 - `--user KEY:VALUE` overrides apply for one invocation only; they are not persisted to any
   config file.
 
