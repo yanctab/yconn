@@ -124,7 +124,7 @@ pub enum Commands {
     Config,
 
     /// Manage the active connection group
-    Group {
+    Groups {
         #[command(subcommand)]
         subcommand: GroupCommands,
     },

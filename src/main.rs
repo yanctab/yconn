@@ -41,7 +41,7 @@ fn main() -> Result<()> {
             let cfg = load_and_warn(&renderer, verbose)?;
             commands::config::run(&cfg, &renderer)
         }
-        Commands::Group { subcommand } => match subcommand {
+        Commands::Groups { subcommand } => match subcommand {
             GroupCommands::List => {
                 let cfg = load_and_warn(&renderer, verbose)?;
                 commands::group::list(&cfg, &renderer)

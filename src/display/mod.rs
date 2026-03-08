@@ -67,20 +67,20 @@ pub struct UserRow {
     pub shadowed: bool,
 }
 
-/// A row in the `yconn group list` output table.
+/// A row in the `yconn groups list` output table.
 pub struct GroupRow {
     pub name: String,
     pub layers: Vec<String>,
 }
 
-/// A single layer entry for `yconn group current`.
+/// A single layer entry for `yconn groups current`.
 pub struct LayerCurrentInfo {
     pub label: String,
     pub path: String,
     pub found: bool,
 }
 
-/// Full status for `yconn group current`.
+/// Full status for `yconn groups current`.
 pub struct GroupCurrentStatus {
     /// The locked group name, or `None` when no group is locked.
     pub active_group: Option<String>,
@@ -455,12 +455,12 @@ impl Renderer {
         print!("{}", self.render_user_list(rows));
     }
 
-    /// Print the group list table (`yconn group list`).
+    /// Print the group list table (`yconn groups list`).
     pub fn group_list(&self, groups: &[GroupRow]) {
         print!("{}", self.render_group_list(groups));
     }
 
-    /// Print the group current status (`yconn group current`).
+    /// Print the group current status (`yconn groups current`).
     pub fn group_current(&self, status: &GroupCurrentStatus) {
         print!("{}", self.render_group_current(status));
     }

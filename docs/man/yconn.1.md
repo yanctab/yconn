@@ -308,8 +308,8 @@ yconn edit staging-db
 Switch active group and verify:
 
 ```
-yconn group use work
-yconn group current
+yconn groups use work
+yconn groups current
 ```
 
 Show active config files and Docker status:

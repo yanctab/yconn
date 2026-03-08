@@ -284,13 +284,13 @@ connections:
 
 ```bash
 # List all available group values found across connections
-yconn group list
+yconn groups list
 
 # Show all connections (no group filter)
 yconn list
 
 # Switch to the work group — subsequent list/connect only shows work connections
-yconn group use work
+yconn groups use work
 
 # List only work connections
 yconn list
@@ -299,7 +299,7 @@ yconn list
 yconn connect work-web
 
 # Switch to the private group
-yconn group use private
+yconn groups use private
 
 # List only private connections
 yconn list
@@ -314,10 +314,10 @@ yconn list --group work
 yconn list --all
 
 # Check which group is currently active
-yconn group current
+yconn groups current
 
 # Revert to no group filter (show all connections)
-yconn group clear
+yconn groups clear
 ```
 
 **Notes:**
@@ -329,7 +329,7 @@ yconn group clear
 - Connections without a `group:` field are always shown when no group filter is active.
   When a group is locked, only tagged connections matching the group are shown.
 - `yconn list --all` always overrides any group filter and shows every connection.
-- `yconn group use <name>` warns if no connections with that group value exist in any
+- `yconn groups use <name>` warns if no connections with that group value exist in any
   layer, but it still sets the group.
 
 ---
