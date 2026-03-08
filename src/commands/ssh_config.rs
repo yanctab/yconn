@@ -544,12 +544,8 @@ mod tests {
     #[test]
     fn test_all_comment_fields_precede_host_line() {
         let mut conn = make_conn(
-            "srv",
-            "myhost",
-            "${nokey}", // unresolved → triggers user comment
-            22,
-            "password",
-            None,
+            "srv", "myhost", "${nokey}", // unresolved → triggers user comment
+            22, "password", None,
         );
         conn.link = Some("https://wiki.example.com/srv".to_string());
         conn.description = "My server".to_string();
@@ -558,7 +554,9 @@ mod tests {
 
         // Locate positions.
         let host_pos = out.find("Host srv\n").expect("Host line must be present");
-        let desc_pos = out.find("# description:").expect("# description must be present");
+        let desc_pos = out
+            .find("# description:")
+            .expect("# description must be present");
         let auth_pos = out.find("# auth:").expect("# auth must be present");
         let link_pos = out.find("# link:").expect("# link must be present");
         let user_pos = out
@@ -566,10 +564,7 @@ mod tests {
             .expect("# user comment must be present");
 
         // All comments precede the Host line.
-        assert!(
-            desc_pos < host_pos,
-            "# description must precede Host line"
-        );
+        assert!(desc_pos < host_pos, "# description must precede Host line");
         assert!(auth_pos < host_pos, "# auth must precede Host line");
         assert!(link_pos < host_pos, "# link must precede Host line");
         assert!(
@@ -580,7 +575,10 @@ mod tests {
         // Order: description → auth → link → user comment.
         assert!(desc_pos < auth_pos, "# description must come before # auth");
         assert!(auth_pos < link_pos, "# auth must come before # link");
-        assert!(link_pos < user_pos, "# link must come before # user comment");
+        assert!(
+            link_pos < user_pos,
+            "# link must come before # user comment"
+        );
 
         // No # lines inside the Host block (between Host line and the trailing blank line).
         let block_body = &out[host_pos..];
@@ -619,6 +617,9 @@ mod tests {
             !after_host_line.starts_with('#'),
             "first line after Host must not be a comment: {after_host_line:?}"
         );
-        assert!(!out.contains("User "), "User line must be absent with skip_user=true");
+        assert!(
+            !out.contains("User "),
+            "User line must be absent with skip_user=true"
+        );
     }
 }
