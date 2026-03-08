@@ -1280,7 +1280,8 @@ fn user_show_prints_username_from_env_var() {
 
 // ─── show --dump ──────────────────────────────────────────────────────────────
 
-/// `yconn connections show --dump` outputs valid YAML containing all connection names and user keys.
+/// `yconn connections show --dump` outputs valid YAML containing all connection names and user keys,
+/// with blank lines between connection entries and between the connections and users blocks.
 #[test]
 fn show_dump_outputs_merged_config_as_yaml() {
     let env = TestEnv::new();
@@ -1299,6 +1300,25 @@ fn show_dump_outputs_merged_config_as_yaml() {
     assert!(stdout.contains("users:"), "missing users: key");
     assert!(stdout.contains("testuser:"), "missing testuser key");
     assert!(stdout.contains("mybot:"), "missing mybot key");
+
+    // Blank-line separation: at least one blank line between the two connection
+    // entries within the connections: block.
+    let conn_section: Vec<&str> = stdout
+        .lines()
+        .skip_while(|l| !l.starts_with("connections:"))
+        .take_while(|l| !l.starts_with("users:"))
+        .collect();
+    let blank_in_conn = conn_section.iter().filter(|l| l.is_empty()).count();
+    assert!(
+        blank_in_conn >= 1,
+        "expected at least one blank line between connection entries in connections block:\n{stdout}"
+    );
+
+    // Blank line between connections: block and users: block.
+    assert!(
+        stdout.contains("\nusers:"),
+        "expected blank line immediately before users: key:\n{stdout}"
+    );
 }
 
 /// `yconn connections show --dump` with no config outputs empty-but-valid YAML.
