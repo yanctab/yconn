@@ -961,12 +961,12 @@ fn range_conflict_with_glob_exits_nonzero_with_pattern_names_in_stderr() {
     );
 }
 
-// ─── ssh-config generate ──────────────────────────────────────────────────────
+// ─── ssh-config install ───────────────────────────────────────────────────────
 
-/// `yconn ssh-config generate` writes correct Host blocks to
+/// `yconn ssh-config install` writes correct Host blocks to
 /// `~/.ssh/yconn-connections` and injects Include into `~/.ssh/config`.
 #[test]
-fn ssh_config_generate_writes_host_blocks_and_include() {
+fn ssh_config_install_writes_host_blocks_and_include() {
     let env = TestEnv::new();
 
     env.write_user_config(
@@ -974,7 +974,7 @@ fn ssh_config_generate_writes_host_blocks_and_include() {
         "connections:\n  prod-web:\n    host: 10.0.1.50\n    user: deploy\n    auth: key\n    key: ~/.ssh/prod_key\n    description: Production web\n  staging-db:\n    host: staging.internal\n    user: dbadmin\n    port: 2222\n    auth: password\n    description: Staging database\n",
     );
 
-    let out = env.run(&["ssh-config"]);
+    let out = env.run(&["ssh-config", "install"]);
     TestEnv::assert_ok(&out);
 
     // yconn-connections file must exist with correct Host blocks.
@@ -1018,14 +1018,6 @@ fn ssh_config_generate_writes_host_blocks_and_include() {
 
     // No # comment lines must appear inside any Host block (after Host line,
     // before the next blank line).
-    for line in content.lines() {
-        // We track whether we are inside a Host block.
-        // A simple check: find lines starting with "Host " and scan forward.
-        // Instead, assert directly: no line starting with '#' should appear
-        // between a "Host " line and the next blank line.
-        let _ = line; // ownership required for the closure below
-    }
-    // Parse blocks and assert no comment lines inside any block.
     let mut in_host_block = false;
     for line in content.lines() {
         if line.starts_with("Host ") {
@@ -1052,10 +1044,10 @@ fn ssh_config_generate_writes_host_blocks_and_include() {
     );
 }
 
-/// `yconn ssh-config generate --dry-run` prints Host blocks to stdout and
+/// `yconn ssh-config install --dry-run` prints Host blocks to stdout and
 /// does not write any files.
 #[test]
-fn ssh_config_generate_dry_run_prints_to_stdout_no_files_written() {
+fn ssh_config_install_dry_run_prints_to_stdout_no_files_written() {
     let env = TestEnv::new();
 
     env.write_user_config(
@@ -1063,7 +1055,7 @@ fn ssh_config_generate_dry_run_prints_to_stdout_no_files_written() {
         "connections:\n  myhost:\n    host: 192.168.1.1\n    user: admin\n    auth: password\n    description: My host\n",
     );
 
-    let out = env.run(&["ssh-config", "--dry-run"]);
+    let out = env.run(&["ssh-config", "install", "--dry-run"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -1080,7 +1072,7 @@ fn ssh_config_generate_dry_run_prints_to_stdout_no_files_written() {
     );
 }
 
-/// `yconn ssh-config --user user:alice` renders `User alice` in all blocks.
+/// `yconn ssh-config install --user user:alice` renders `User alice` in all blocks.
 #[test]
 fn ssh_config_user_override_renders_expanded_user_line() {
     let env = TestEnv::new();
@@ -1090,7 +1082,7 @@ fn ssh_config_user_override_renders_expanded_user_line() {
         "connections:\n  srv:\n    host: 10.0.0.1\n    user: \"${user}\"\n    auth: password\n    description: test\n",
     );
 
-    let out = env.run(&["ssh-config", "--dry-run", "--user", "user:alice"]);
+    let out = env.run(&["ssh-config", "install", "--dry-run", "--user", "user:alice"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -1104,7 +1096,7 @@ fn ssh_config_user_override_renders_expanded_user_line() {
     );
 }
 
-/// `yconn ssh-config --skip-user` renders no User line in any block.
+/// `yconn ssh-config install --skip-user` renders no User line in any block.
 #[test]
 fn ssh_config_skip_user_omits_user_lines() {
     let env = TestEnv::new();
@@ -1114,7 +1106,7 @@ fn ssh_config_skip_user_omits_user_lines() {
         "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: test\n",
     );
 
-    let out = env.run(&["ssh-config", "--dry-run", "--skip-user"]);
+    let out = env.run(&["ssh-config", "install", "--dry-run", "--skip-user"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -1128,8 +1120,8 @@ fn ssh_config_skip_user_omits_user_lines() {
     );
 }
 
-/// `yconn ssh-config` with an unresolved `${t1user}` template emits a warning
-/// on stderr that contains both "unresolved" and the fix command
+/// `yconn ssh-config install` with an unresolved `${t1user}` template emits a
+/// warning on stderr that contains both "unresolved" and the fix command
 /// `yconn users add --user t1user:<value>`.
 #[test]
 fn ssh_config_unresolved_user_template_emits_fix_command_in_warning() {
@@ -1141,7 +1133,7 @@ fn ssh_config_unresolved_user_template_emits_fix_command_in_warning() {
     );
 
     // Run without --dry-run; the warning should appear on stderr regardless.
-    let out = env.run(&["ssh-config"]);
+    let out = env.run(&["ssh-config", "install"]);
 
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
@@ -1154,7 +1146,7 @@ fn ssh_config_unresolved_user_template_emits_fix_command_in_warning() {
     );
 }
 
-/// `yconn ssh-config` preserves a pre-existing foreign Host block in
+/// `yconn ssh-config install` preserves a pre-existing foreign Host block in
 /// `~/.ssh/yconn-connections` and adds the new blocks alongside it.
 #[test]
 fn ssh_config_preserves_foreign_host_blocks() {
@@ -1176,7 +1168,7 @@ fn ssh_config_preserves_foreign_host_blocks() {
     )
     .unwrap();
 
-    let out = env.run(&["ssh-config"]);
+    let out = env.run(&["ssh-config", "install"]);
     TestEnv::assert_ok(&out);
 
     let content = fs::read_to_string(&conn_file).unwrap();
@@ -1202,9 +1194,9 @@ fn ssh_config_preserves_foreign_host_blocks() {
     );
 }
 
-/// Running `yconn ssh-config` twice with different project configs pointed at
-/// the same home directory leaves blocks from both runs in the file after the
-/// second run.
+/// Running `yconn ssh-config install` twice with different project configs
+/// pointed at the same home directory leaves blocks from both runs in the file
+/// after the second run.
 #[test]
 fn ssh_config_two_runs_accumulate_blocks() {
     let env = TestEnv::new();
@@ -1214,7 +1206,7 @@ fn ssh_config_two_runs_accumulate_blocks() {
         "connections",
         "connections:\n  first-host:\n    host: 10.0.1.1\n    user: alice\n    auth: password\n    description: First host\n",
     );
-    let out1 = env.run(&["ssh-config"]);
+    let out1 = env.run(&["ssh-config", "install"]);
     TestEnv::assert_ok(&out1);
 
     // Second run: replace user config with a different connection.
@@ -1224,7 +1216,7 @@ fn ssh_config_two_runs_accumulate_blocks() {
         "connections:\n  second-host:\n    host: 10.0.1.2\n    user: bob\n    auth: password\n    description: Second host\n",
     )
     .unwrap();
-    let out2 = env.run(&["ssh-config"]);
+    let out2 = env.run(&["ssh-config", "install"]);
     TestEnv::assert_ok(&out2);
 
     let conn_file = env.home.path().join(".ssh").join("yconn-connections");
@@ -1239,6 +1231,236 @@ fn ssh_config_two_runs_accumulate_blocks() {
         content.contains("Host second-host"),
         "second-host block must appear after second run: {content}"
     );
+}
+
+// ─── ssh-config print ─────────────────────────────────────────────────────────
+
+/// `yconn ssh-config print` renders Host blocks to stdout without writing files.
+#[test]
+fn ssh_config_print_outputs_host_blocks_to_stdout() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  myhost:\n    host: 192.168.1.5\n    user: admin\n    auth: password\n    description: My host\n",
+    );
+
+    let out = env.run(&["ssh-config", "print"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Host myhost"),
+        "expected Host block in stdout, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("    HostName 192.168.1.5"),
+        "expected HostName in stdout, got: {stdout}"
+    );
+
+    // No files must be written.
+    let conn_file = env.home.path().join(".ssh").join("yconn-connections");
+    assert!(
+        !conn_file.exists(),
+        "ssh-config print must not write yconn-connections"
+    );
+    let config_file = env.home.path().join(".ssh").join("config");
+    assert!(
+        !config_file.exists(),
+        "ssh-config print must not write ~/.ssh/config"
+    );
+}
+
+/// `yconn ssh-config print --skip-user` omits User lines from output.
+#[test]
+fn ssh_config_print_skip_user_omits_user_lines() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: test\n",
+    );
+
+    let out = env.run(&["ssh-config", "print", "--skip-user"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stdout.contains("    User "),
+        "User lines must be omitted with --skip-user, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Host srv"),
+        "Host block must still appear: {stdout}"
+    );
+}
+
+// ─── ssh-config uninstall ─────────────────────────────────────────────────────
+
+/// `yconn ssh-config uninstall` removes `~/.ssh/yconn-connections` and the
+/// Include line from `~/.ssh/config`.
+#[test]
+fn ssh_config_uninstall_removes_file_and_include_line() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: test\n",
+    );
+
+    // Install first.
+    let install_out = env.run(&["ssh-config", "install"]);
+    TestEnv::assert_ok(&install_out);
+
+    let conn_file = env.home.path().join(".ssh").join("yconn-connections");
+    let config_file = env.home.path().join(".ssh").join("config");
+    assert!(
+        conn_file.exists(),
+        "yconn-connections must exist after install"
+    );
+    assert!(
+        config_file.exists(),
+        "~/.ssh/config must exist after install"
+    );
+
+    // Now uninstall.
+    let out = env.run(&["ssh-config", "uninstall"]);
+    TestEnv::assert_ok(&out);
+
+    assert!(
+        !conn_file.exists(),
+        "yconn-connections must be removed after uninstall"
+    );
+    let config = fs::read_to_string(&config_file).unwrap();
+    assert!(
+        !config.contains("Include ~/.ssh/yconn-connections"),
+        "Include line must be removed after uninstall, got: {config}"
+    );
+}
+
+/// `yconn ssh-config uninstall` is graceful when `~/.ssh/yconn-connections`
+/// does not exist.
+#[test]
+fn ssh_config_uninstall_graceful_when_file_absent() {
+    let env = TestEnv::new();
+
+    let out = env.run(&["ssh-config", "uninstall"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("does not exist") || stdout.contains("nothing to remove"),
+        "expected graceful message, got: {stdout}"
+    );
+}
+
+// ─── ssh-config disable / enable ─────────────────────────────────────────────
+
+/// `yconn ssh-config disable` removes the Include line but leaves
+/// `~/.ssh/yconn-connections` intact.
+#[test]
+fn ssh_config_disable_removes_include_line_keeps_file() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: test\n",
+    );
+
+    // Install first.
+    let install_out = env.run(&["ssh-config", "install"]);
+    TestEnv::assert_ok(&install_out);
+
+    let conn_file = env.home.path().join(".ssh").join("yconn-connections");
+    let config_file = env.home.path().join(".ssh").join("config");
+    assert!(
+        conn_file.exists(),
+        "yconn-connections must exist after install"
+    );
+
+    // Disable.
+    let out = env.run(&["ssh-config", "disable"]);
+    TestEnv::assert_ok(&out);
+
+    // yconn-connections file must still be present.
+    assert!(
+        conn_file.exists(),
+        "yconn-connections must remain after disable"
+    );
+    // Include line must be gone.
+    let config = fs::read_to_string(&config_file).unwrap();
+    assert!(
+        !config.contains("Include ~/.ssh/yconn-connections"),
+        "Include line must be removed after disable, got: {config}"
+    );
+}
+
+/// `yconn ssh-config enable` adds the Include line back when absent.
+#[test]
+fn ssh_config_enable_adds_include_line_when_absent() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: test\n",
+    );
+
+    // Install then disable to remove Include.
+    let install_out = env.run(&["ssh-config", "install"]);
+    TestEnv::assert_ok(&install_out);
+    let disable_out = env.run(&["ssh-config", "disable"]);
+    TestEnv::assert_ok(&disable_out);
+
+    let config_file = env.home.path().join(".ssh").join("config");
+    let config = fs::read_to_string(&config_file).unwrap();
+    assert!(
+        !config.contains("Include ~/.ssh/yconn-connections"),
+        "Include must be absent after disable, got: {config}"
+    );
+
+    // Enable.
+    let out = env.run(&["ssh-config", "enable"]);
+    TestEnv::assert_ok(&out);
+
+    let config = fs::read_to_string(&config_file).unwrap();
+    assert!(
+        config.contains("Include ~/.ssh/yconn-connections"),
+        "Include line must be re-added after enable, got: {config}"
+    );
+}
+
+/// `yconn ssh-config enable` is a no-op with a message if Include already present.
+#[test]
+fn ssh_config_enable_noop_when_include_already_present() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: test\n",
+    );
+
+    // Install to set up Include line.
+    let install_out = env.run(&["ssh-config", "install"]);
+    TestEnv::assert_ok(&install_out);
+
+    // Enable again — must be a no-op.
+    let out = env.run(&["ssh-config", "enable"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("already present") || stdout.contains("nothing to do"),
+        "expected no-op message, got: {stdout}"
+    );
+
+    // Still exactly one Include line.
+    let config_file = env.home.path().join(".ssh").join("config");
+    let config = fs::read_to_string(&config_file).unwrap();
+    let count = config
+        .lines()
+        .filter(|l| l.trim() == "Include ~/.ssh/yconn-connections")
+        .count();
+    assert_eq!(count, 1, "Include must appear exactly once, got:\n{config}");
 }
 
 // ─── yconn users ─────────────────────────────────────────────────────────────

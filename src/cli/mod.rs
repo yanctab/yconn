@@ -4,7 +4,7 @@
 // Parses commands and flags, delegates entirely to other modules.
 // No business logic lives here.
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 /// Which config layer to target for add / edit / remove.
 ///
@@ -138,20 +138,8 @@ pub enum Commands {
         subcommand: GroupCommands,
     },
 
-    /// Write Host blocks to ~/.ssh/yconn-connections and update ~/.ssh/config
-    SshConfig {
-        /// Print generated config to stdout without writing any files
-        #[arg(long)]
-        dry_run: bool,
-        /// Override or add a users: map entry for this invocation (repeatable).
-        /// Format: key:value. Mutually exclusive with --skip-user.
-        #[arg(long = "user", value_name = "KEY:VALUE", action = clap::ArgAction::Append, conflicts_with = "skip_user")]
-        user_overrides: Vec<String>,
-        /// Omit User lines from all generated Host blocks.
-        /// Mutually exclusive with --user.
-        #[arg(long, conflicts_with = "user_overrides")]
-        skip_user: bool,
-    },
+    /// Manage SSH config integration (install, print, uninstall, disable, enable)
+    SshConfig(SshConfigArgs),
 
     /// Manage user key/value entries in the users: config section
     Users {
@@ -203,4 +191,54 @@ pub enum GroupCommands {
 
     /// Print the active group name and resolved config file paths
     Current,
+}
+
+/// Arguments for the `ssh-config` subcommand group.
+///
+/// Requires a subcommand; bare `yconn ssh-config` prints help and exits
+/// with a non-zero status.
+#[derive(Debug, Args)]
+#[command(subcommand_required = true, arg_required_else_help = true)]
+pub struct SshConfigArgs {
+    #[command(subcommand)]
+    pub subcommand: SshConfigCommands,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SshConfigCommands {
+    /// Write Host blocks to ~/.ssh/yconn-connections and update ~/.ssh/config
+    Install {
+        /// Print generated config to stdout without writing any files
+        #[arg(long)]
+        dry_run: bool,
+        /// Override or add a users: map entry for this invocation (repeatable).
+        /// Format: key:value. Mutually exclusive with --skip-user.
+        #[arg(long = "user", value_name = "KEY:VALUE", action = clap::ArgAction::Append, conflicts_with = "skip_user")]
+        user_overrides: Vec<String>,
+        /// Omit User lines from all generated Host blocks.
+        /// Mutually exclusive with --user.
+        #[arg(long, conflicts_with = "user_overrides")]
+        skip_user: bool,
+    },
+
+    /// Print the fully merged SSH config to stdout without writing any files
+    Print {
+        /// Override or add a users: map entry for this invocation (repeatable).
+        /// Format: key:value. Mutually exclusive with --skip-user.
+        #[arg(long = "user", value_name = "KEY:VALUE", action = clap::ArgAction::Append, conflicts_with = "skip_user")]
+        user_overrides: Vec<String>,
+        /// Omit User lines from all generated Host blocks.
+        /// Mutually exclusive with --user.
+        #[arg(long, conflicts_with = "user_overrides")]
+        skip_user: bool,
+    },
+
+    /// Remove ~/.ssh/yconn-connections and the Include line from ~/.ssh/config
+    Uninstall,
+
+    /// Remove the Include line from ~/.ssh/config, keeping ~/.ssh/yconn-connections intact
+    Disable,
+
+    /// Add the Include line back to ~/.ssh/config if currently absent
+    Enable,
 }
