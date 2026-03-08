@@ -305,7 +305,7 @@ impl Renderer {
     // ── user list ─────────────────────────────────────────────────────────────
 
     fn render_user_list(&self, rows: &[UserRow]) -> String {
-        const HEADERS: [&str; 3] = ["KEY", "VALUE", "SOURCE"];
+        const HEADERS: [&str; 3] = ["VARIABLE", "VALUE", "SOURCE"];
         const GAP: &str = "   ";
 
         let mut col = [
@@ -314,7 +314,7 @@ impl Renderer {
             0usize, // source — not padded (last col)
         ];
         for row in rows {
-            col[0] = col[0].max(row.key.len());
+            col[0] = col[0].max(row.key.len() + 3); // "${" + key + "}"
             col[1] = col[1].max(row.value.len());
         }
 
@@ -338,7 +338,9 @@ impl Renderer {
             } else {
                 row.source.clone()
             };
-            let cells: Vec<String> = vec![pad(&row.key, col[0]), pad(&row.value, col[1]), source];
+            let key_display = format!("${{{}}}", row.key);
+            let cells: Vec<String> =
+                vec![pad(&key_display, col[0]), pad(&row.value, col[1]), source];
             let line = cells.join(GAP);
             if row.shadowed {
                 out.push_str(&self.maybe_dim(&line));

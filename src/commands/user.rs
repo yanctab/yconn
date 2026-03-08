@@ -42,7 +42,7 @@ fn build_user_rows(cfg: &LoadedConfig, env_user: Option<&str>) -> Vec<UserRow> {
 
     // Append a synthetic env-var row when the `user` key is absent from the
     // active (non-shadowed) users map and $USER is set.
-    if cfg.users.get("user").is_none() {
+    if !cfg.users.contains_key("user") {
         if let Some(u) = env_user {
             rows.push(UserRow {
                 key: "user".to_string(),
@@ -489,7 +489,10 @@ mod tests {
         let cfg = load(cwd.path(), Some(user_dir.path()), empty.path());
 
         let rows = build_user_rows(&cfg, Some("bob"));
-        let user_row = rows.iter().find(|r| r.key == "user").expect("synthetic user row");
+        let user_row = rows
+            .iter()
+            .find(|r| r.key == "user")
+            .expect("synthetic user row");
         assert_eq!(user_row.value, "bob");
         assert!(
             user_row.source.contains("environment variable $USER"),
