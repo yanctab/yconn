@@ -55,7 +55,7 @@ pub fn current(cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
 /// exist in any layer.
 ///
 /// The group is always written even if no connections use it — the user can
-/// follow up with `yconn add` to tag connections with this group.
+/// follow up with `yconn connections add` to tag connections with this group.
 /// Invoked as `yconn groups use <name>`.
 pub fn use_group(name: &str, cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
     let session_path = dirs::config_dir()
@@ -90,7 +90,7 @@ fn use_group_impl(
     if !groups.iter().any(|g| g.name == name) {
         renderer.warn(&format!(
             "group '{name}' has no connections tagged with it in any layer — \
-             tag connections with 'group: {name}' or use 'yconn add'"
+             tag connections with 'group: {name}' or use 'yconn connections add'"
         ));
     }
 

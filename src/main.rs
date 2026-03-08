@@ -10,7 +10,7 @@ mod docker;
 mod group;
 mod security;
 
-use cli::{Cli, Commands, GroupCommands, UserCommands};
+use cli::{Cli, Commands, ConnectionCommands, GroupCommands, UserCommands};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -25,18 +25,30 @@ fn main() -> Result<()> {
             let cfg = load_and_warn(&renderer, verbose)?;
             commands::list::run(&cfg, &renderer, all, group.as_deref())
         }
-        Commands::Show { name, dump } => {
-            let cfg = load_and_warn(&renderer, verbose)?;
-            if dump {
-                commands::show::run_dump(&cfg, &renderer)
-            } else {
-                commands::show::run(
-                    &cfg,
-                    &renderer,
-                    &name.expect("name is required when --dump is not set"),
-                )
+        Commands::Connections { subcommand } => match subcommand {
+            ConnectionCommands::Show { name, dump } => {
+                let cfg = load_and_warn(&renderer, verbose)?;
+                if dump {
+                    commands::show::run_dump(&cfg, &renderer)
+                } else {
+                    commands::show::run(
+                        &cfg,
+                        &renderer,
+                        &name.expect("name is required when --dump is not set"),
+                    )
+                }
             }
-        }
+            ConnectionCommands::Add { layer } => commands::add::run(layer),
+            ConnectionCommands::Edit { name, layer } => {
+                let cfg = load_and_warn(&renderer, verbose)?;
+                commands::edit::run(&cfg, &name, layer)
+            }
+            ConnectionCommands::Remove { name, layer } => {
+                let cfg = load_and_warn(&renderer, verbose)?;
+                commands::remove::run(&cfg, &renderer, &name, layer)
+            }
+            ConnectionCommands::Init { location } => commands::init::run(location),
+        },
         Commands::Config => {
             let cfg = load_and_warn(&renderer, verbose)?;
             commands::config::run(&cfg, &renderer)
@@ -64,16 +76,6 @@ fn main() -> Result<()> {
             let overrides = parse_user_overrides(&user_overrides)?;
             commands::connect::run(&cfg, &renderer, &name, verbose, &overrides)
         }
-        Commands::Add { layer } => commands::add::run(layer),
-        Commands::Edit { name, layer } => {
-            let cfg = load_and_warn(&renderer, verbose)?;
-            commands::edit::run(&cfg, &name, layer)
-        }
-        Commands::Remove { name, layer } => {
-            let cfg = load_and_warn(&renderer, verbose)?;
-            commands::remove::run(&cfg, &renderer, &name, layer)
-        }
-        Commands::Init { location } => commands::init::run(location),
         Commands::SshConfig {
             dry_run,
             user_overrides,

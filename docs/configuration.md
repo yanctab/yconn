@@ -221,9 +221,9 @@ scanned for `${key}` tokens:
 Named entry lookup always occurs before `${user}` env-var expansion. To override `${user}` for
 a single invocation, use `--user user:<name>` (see below).
 
-### `yconn show` displays raw values
+### `yconn connections show` displays raw values
 
-`yconn show <name>` prints the `user` field value as-is, without any template expansion. The
+`yconn connections show <name>` prints the `user` field value as-is, without any template expansion. The
 raw config value (e.g. `${testuser}`) is shown, not the expanded value.
 
 ### Per-invocation overrides: `--user KEY:VALUE`

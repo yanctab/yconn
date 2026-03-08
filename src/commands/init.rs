@@ -46,7 +46,7 @@ pub(crate) fn run_impl(cwd: &std::path::Path, location: InitLocation) -> Result<
 
     if target.exists() {
         anyhow::bail!(
-            "{} already exists — edit it directly or use `yconn add` to add a connection",
+            "{} already exists — edit it directly or use `yconn connections add` to add a connection",
             target.display()
         );
     }
