@@ -1016,6 +1016,34 @@ fn ssh_config_generate_writes_host_blocks_and_include() {
         "config must contain Include line, got: {config}"
     );
 
+    // No # comment lines must appear inside any Host block (after Host line,
+    // before the next blank line).
+    for line in content.lines() {
+        // We track whether we are inside a Host block.
+        // A simple check: find lines starting with "Host " and scan forward.
+        // Instead, assert directly: no line starting with '#' should appear
+        // between a "Host " line and the next blank line.
+        let _ = line; // ownership required for the closure below
+    }
+    // Parse blocks and assert no comment lines inside any block.
+    let mut in_host_block = false;
+    for line in content.lines() {
+        if line.starts_with("Host ") {
+            in_host_block = true;
+            continue;
+        }
+        if line.is_empty() {
+            in_host_block = false;
+            continue;
+        }
+        if in_host_block {
+            assert!(
+                !line.starts_with('#'),
+                "no # lines must appear inside a Host block, got: {line:?} in:\n{content}"
+            );
+        }
+    }
+
     // Summary line in stdout.
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
