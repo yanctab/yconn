@@ -112,6 +112,7 @@ pub(crate) fn parse_user_pairs(pairs: &[String]) -> Result<Vec<(String, String)>
 fn add_pairs(_layer: Layer, layer_dir: &Path, pairs: &[(String, String)]) -> Result<()> {
     let target = layer_dir.join("connections.yaml");
 
+    println!("Updating: {}", target.display());
     for (key, value) in pairs {
         write_user_entry(&target, key, value)
             .with_context(|| format!("failed to write user entry '{key}'"))?;
@@ -125,6 +126,7 @@ fn add_pairs(_layer: Layer, layer_dir: &Path, pairs: &[(String, String)]) -> Res
 /// $EDITOR.
 pub fn edit(cfg: &LoadedConfig, key: &str, layer: Option<LayerArg>) -> Result<()> {
     let path = resolve_edit_path(cfg, key, layer)?;
+    println!("Updating: {}", path.display());
     open_editor(&path)
 }
 
@@ -180,6 +182,7 @@ pub(crate) fn add_impl(
         bail!("aborted");
     }
 
+    writeln!(output, "Updating: {}", target.display())?;
     write_user_entry(&target, &key, &value)?;
 
     writeln!(output)?;
@@ -391,6 +394,57 @@ mod tests {
     fn test_user_entry_exists_false_when_absent() {
         let content = "users:\n  other: \"val\"\n";
         assert!(!user_entry_exists(content, "mykey"));
+    }
+
+    // ── add_impl output contains "Updating:" ──────────────────────────────────
+
+    #[test]
+    fn test_add_impl_output_contains_updating_path() {
+        let dir = TempDir::new().unwrap();
+        let answers = ["mykey", "myval"];
+        let out = run_add(Layer::User, dir.path(), &answers).unwrap();
+        let expected_target = dir.path().join("connections.yaml");
+        assert!(
+            out.contains("Updating:"),
+            "expected 'Updating:' in output: {out}"
+        );
+        assert!(
+            out.contains(&expected_target.display().to_string()),
+            "expected target path in output: {out}"
+        );
+    }
+
+    #[test]
+    fn test_add_impl_updating_printed_for_existing_file() {
+        let dir = TempDir::new().unwrap();
+        write_yaml(
+            dir.path(),
+            "connections.yaml",
+            "version: 1\n\nusers:\n  existing: \"oldval\"\n",
+        );
+        let answers = ["newkey", "newval"];
+        let out = run_add(Layer::User, dir.path(), &answers).unwrap();
+        assert!(
+            out.contains("Updating:"),
+            "expected 'Updating:' in output when appending: {out}"
+        );
+    }
+
+    // ── add_pairs output contains "Updating:" ─────────────────────────────────
+
+    #[test]
+    fn test_add_pairs_output_contains_updating_path() {
+        let dir = TempDir::new().unwrap();
+        let pairs = vec![("foo".to_string(), "bar".to_string())];
+
+        // Capture println! output by running in a subprocess is not feasible here;
+        // instead verify the file is created and that add_pairs succeeds. The
+        // "Updating:" print goes to stdout directly via println!, so we verify
+        // the behaviour through the functional tests. Here we confirm add_pairs
+        // does not error out.
+        add_pairs(Layer::User, dir.path(), &pairs).unwrap();
+        let content = fs::read_to_string(dir.path().join("connections.yaml")).unwrap();
+        assert!(content.contains("foo:"));
     }
 
     // ── add wizard round-trip ─────────────────────────────────────────────────

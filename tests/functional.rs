@@ -1448,6 +1448,67 @@ fn show_dump_empty_config_produces_valid_yaml() {
     assert!(stdout.contains("users:"), "missing users: key");
 }
 
+// ─── yconn users add — Updating: message ─────────────────────────────────────
+
+/// `yconn users add` interactive wizard prints `Updating: <path>` to stdout
+/// before writing the config file.
+#[test]
+fn user_add_interactive_prints_updating_path() {
+    let env = TestEnv::new();
+
+    let out = env.run_with_stdin(&["users", "add"], "mykey\nmyval\n");
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    // The "Updating:" message must appear.
+    assert!(
+        stdout.contains("Updating:"),
+        "expected 'Updating:' in stdout: {stdout}"
+    );
+
+    // The path must end with connections.yaml (user config layer).
+    assert!(
+        stdout.contains("connections.yaml"),
+        "expected config file path containing 'connections.yaml' in stdout: {stdout}"
+    );
+
+    // The written config file must also exist at the expected location.
+    let config_path = env.xdg_config.path().join("yconn").join("connections.yaml");
+    assert!(
+        config_path.exists(),
+        "expected config file to be created at {config_path:?}"
+    );
+}
+
+/// `yconn users add --user KEY:VALUE` non-interactive path prints
+/// `Updating: <path>` to stdout before writing the config file.
+#[test]
+fn user_add_non_interactive_prints_updating_path() {
+    let env = TestEnv::new();
+
+    let out = env.run(&["users", "add", "--user", "foo:bar"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    assert!(
+        stdout.contains("Updating:"),
+        "expected 'Updating:' in stdout: {stdout}"
+    );
+
+    assert!(
+        stdout.contains("connections.yaml"),
+        "expected config file path containing 'connections.yaml' in stdout: {stdout}"
+    );
+
+    let config_path = env.xdg_config.path().join("yconn").join("connections.yaml");
+    assert!(
+        config_path.exists(),
+        "expected config file to be created at {config_path:?}"
+    );
+}
+
 /// `yconn connections show <name>` still works (name is still accepted).
 #[test]
 fn show_name_still_works_after_dump_flag_added() {
