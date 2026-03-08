@@ -1128,6 +1128,93 @@ fn ssh_config_skip_user_omits_user_lines() {
     );
 }
 
+/// `yconn ssh-config` preserves a pre-existing foreign Host block in
+/// `~/.ssh/yconn-connections` and adds the new blocks alongside it.
+#[test]
+fn ssh_config_preserves_foreign_host_blocks() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  prod-web:\n    host: 10.0.1.50\n    user: deploy\n    auth: password\n    description: Production web\n",
+    );
+
+    // Pre-populate yconn-connections with a foreign Host block that yconn
+    // knows nothing about.
+    let ssh_dir = env.home.path().join(".ssh");
+    fs::create_dir_all(&ssh_dir).unwrap();
+    let conn_file = ssh_dir.join("yconn-connections");
+    fs::write(
+        &conn_file,
+        "# description: some other project\n# auth: key\nHost myother-host\n    HostName other.example.com\n    User ops\n\n",
+    )
+    .unwrap();
+
+    let out = env.run(&["ssh-config"]);
+    TestEnv::assert_ok(&out);
+
+    let content = fs::read_to_string(&conn_file).unwrap();
+
+    // The foreign block must be preserved.
+    assert!(
+        content.contains("Host myother-host"),
+        "foreign block must be preserved: {content}"
+    );
+    assert!(
+        content.contains("    HostName other.example.com"),
+        "foreign HostName must be preserved: {content}"
+    );
+
+    // The new block must also be present.
+    assert!(
+        content.contains("Host prod-web"),
+        "new block must be written: {content}"
+    );
+    assert!(
+        content.contains("    HostName 10.0.1.50"),
+        "new HostName must appear: {content}"
+    );
+}
+
+/// Running `yconn ssh-config` twice with different project configs pointed at
+/// the same home directory leaves blocks from both runs in the file after the
+/// second run.
+#[test]
+fn ssh_config_two_runs_accumulate_blocks() {
+    let env = TestEnv::new();
+
+    // First run: write project config with one connection.
+    env.write_user_config(
+        "connections",
+        "connections:\n  first-host:\n    host: 10.0.1.1\n    user: alice\n    auth: password\n    description: First host\n",
+    );
+    let out1 = env.run(&["ssh-config"]);
+    TestEnv::assert_ok(&out1);
+
+    // Second run: replace user config with a different connection.
+    let user_config_path = env.xdg_config.path().join("yconn").join("connections.yaml");
+    fs::write(
+        &user_config_path,
+        "connections:\n  second-host:\n    host: 10.0.1.2\n    user: bob\n    auth: password\n    description: Second host\n",
+    )
+    .unwrap();
+    let out2 = env.run(&["ssh-config"]);
+    TestEnv::assert_ok(&out2);
+
+    let conn_file = env.home.path().join(".ssh").join("yconn-connections");
+    let content = fs::read_to_string(&conn_file).unwrap();
+
+    // Blocks from both runs must be present.
+    assert!(
+        content.contains("Host first-host"),
+        "first-host block must survive second run: {content}"
+    );
+    assert!(
+        content.contains("Host second-host"),
+        "second-host block must appear after second run: {content}"
+    );
+}
+
 // ─── yconn users ─────────────────────────────────────────────────────────────
 
 /// `yconn users show` lists all user entries across layers with correct source.

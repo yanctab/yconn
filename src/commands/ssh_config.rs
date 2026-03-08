@@ -149,6 +149,145 @@ fn inject_include(home: &Path) -> Result<()> {
     Ok(())
 }
 
+// ─── Host block upsert ────────────────────────────────────────────────────────
+
+/// A single Host block from a `yconn-connections` file: the SSH Host pattern
+/// and the full text of the block (including any preceding comment lines and
+/// the trailing newline).
+#[derive(Debug, PartialEq)]
+struct HostBlock {
+    /// The SSH Host pattern as it appears on the `Host <pattern>` line.
+    ssh_host: String,
+    /// Full block text, including preamble comments and a trailing blank line.
+    text: String,
+}
+
+/// Parse the contents of `~/.ssh/yconn-connections` into an ordered list of
+/// `HostBlock` values.
+///
+/// The format produced by `render_ssh_config` is:
+///
+/// ```text
+/// # description: …
+/// # auth: …
+/// Host <name>
+///     HostName …
+///     …
+///
+/// ```
+///
+/// A block boundary is a blank line. Lines before the first `Host` line in a
+/// block are treated as that block's preamble (comment lines). The `Host`
+/// pattern is extracted from lines matching `^Host <single-token>$`.
+///
+/// Wildcard Host patterns (e.g. `Host web-*`) are matched exactly — they are
+/// not expanded.
+fn parse_host_blocks(content: &str) -> Vec<HostBlock> {
+    let mut blocks: Vec<HostBlock> = Vec::new();
+
+    // Collect lines, grouping them into blocks separated by blank lines.
+    // We accumulate a "pending" chunk of lines; when we hit a blank line we
+    // finalise the chunk into a block if it contains a `Host` line.
+    let mut pending: Vec<&str> = Vec::new();
+
+    for line in content.lines() {
+        if line.is_empty() {
+            // Blank line: finalise any pending chunk.
+            if !pending.is_empty() {
+                if let Some(block) = finalise_block(&pending) {
+                    blocks.push(block);
+                }
+                pending.clear();
+            }
+        } else {
+            pending.push(line);
+        }
+    }
+
+    // Handle a trailing block with no terminating blank line.
+    if !pending.is_empty() {
+        if let Some(block) = finalise_block(&pending) {
+            blocks.push(block);
+        }
+    }
+
+    blocks
+}
+
+/// Build a `HostBlock` from a non-empty slice of non-blank lines.
+///
+/// Scans for the first line matching `^Host <token>$` and uses the token as
+/// the SSH host pattern. If no such line is found, returns `None` (the chunk
+/// is kept as-is but cannot participate in keyed merge).
+fn finalise_block(lines: &[&str]) -> Option<HostBlock> {
+    let ssh_host = lines.iter().find_map(|l| {
+        let rest = l.strip_prefix("Host ")?;
+        // Ensure it is exactly one token (no embedded spaces).
+        if !rest.is_empty() && !rest.contains(' ') {
+            Some(rest.to_string())
+        } else {
+            None
+        }
+    })?;
+
+    // Reconstruct block text: all lines joined with '\n', plus a trailing '\n'
+    // so blocks end at a newline, followed by a blank line separator.
+    let text = format!("{}\n\n", lines.join("\n"));
+    Some(HostBlock { ssh_host, text })
+}
+
+/// Merge the newly rendered blocks into the existing set of blocks, then
+/// return the full file content.
+///
+/// Merge strategy:
+/// - Walk existing blocks in order. If a block's `ssh_host` matches one from
+///   `new_blocks`, replace its text with the new block's text; remove the new
+///   block from the pending set so it is not appended again.
+/// - Append any remaining new blocks (those not present in the existing file)
+///   after the preserved/updated existing blocks.
+///
+/// This preserves "foreign" blocks (those not in the current yconn config)
+/// unchanged while updating only matching blocks in place.
+fn merge_host_blocks(existing: Vec<HostBlock>, new_blocks: Vec<HostBlock>) -> String {
+    use std::collections::HashMap;
+
+    // Build a map from ssh_host → block text for fast lookup.
+    let mut new_map: HashMap<String, String> = new_blocks
+        .iter()
+        .map(|b| (b.ssh_host.clone(), b.text.clone()))
+        .collect();
+
+    // Track which new blocks were consumed (matched an existing entry).
+    let mut merged = String::new();
+
+    for existing_block in &existing {
+        if let Some(new_text) = new_map.remove(&existing_block.ssh_host) {
+            // Replace the existing block with the new text.
+            merged.push_str(&new_text);
+        } else {
+            // Preserve the foreign block unchanged.
+            merged.push_str(&existing_block.text);
+        }
+    }
+
+    // Append new blocks that were not present in the existing file, in the
+    // same order they appear in new_blocks.
+    for new_block in &new_blocks {
+        if new_map.contains_key(&new_block.ssh_host) {
+            merged.push_str(&new_block.text);
+        }
+    }
+
+    // The final content should end with exactly one newline (each block ends
+    // with "\n\n", so the last block has a trailing blank line; strip it so
+    // write_secure appends a single "\n" consistently).
+    if merged.ends_with("\n\n") {
+        merged.truncate(merged.len() - 1);
+    }
+
+    merged
+}
+
 // ─── Command entry points ─────────────────────────────────────────────────────
 
 pub fn run_generate(
@@ -169,20 +308,39 @@ pub fn run_generate(
         conn.user = expanded;
     }
 
-    let content = render_ssh_config(&connections, skip_user);
+    let rendered = render_ssh_config(&connections, skip_user);
     let block_count = connections.len();
 
+    // Parse the newly rendered blocks.
+    let new_blocks = parse_host_blocks(&rendered);
+
+    // Read the existing file (if present) and merge.
+    let out_path = output_path(home);
+    let existing_content = if out_path.exists() {
+        fs::read_to_string(&out_path)
+            .with_context(|| format!("failed to read {}", out_path.display()))?
+    } else {
+        String::new()
+    };
+
+    let existing_blocks = if existing_content.is_empty() {
+        Vec::new()
+    } else {
+        parse_host_blocks(&existing_content)
+    };
+
+    let merged = merge_host_blocks(existing_blocks, new_blocks);
+
     if dry_run {
-        println!("{content}");
+        println!("{merged}");
         return Ok(());
     }
 
     ensure_ssh_dir(home)?;
-    let out = output_path(home);
-    write_secure(&out, &format!("{content}\n"))?;
+    write_secure(&out_path, &format!("{merged}\n"))?;
     inject_include(home)?;
 
-    println!("Wrote {block_count} Host block(s) to {}", out.display());
+    println!("Wrote {block_count} Host block(s) to {}", out_path.display());
 
     Ok(())
 }
@@ -593,6 +751,111 @@ mod tests {
         assert!(
             !after_host_line.starts_with('#'),
             "first line after Host must not be a comment: {after_host_line:?}"
+        );
+    }
+
+    // ── host block upsert ──────────────────────────────────────────────────────
+
+    /// `parse_host_blocks` returns one block per `Host` line.
+    #[test]
+    fn test_parse_host_blocks_basic() {
+        let content = "# description: prod\n# auth: key\nHost prod-web\n    HostName 10.0.1.50\n    User deploy\n\n# description: db\n# auth: password\nHost staging-db\n    HostName staging.internal\n\n";
+        let blocks = parse_host_blocks(content);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].ssh_host, "prod-web");
+        assert_eq!(blocks[1].ssh_host, "staging-db");
+    }
+
+    /// `parse_host_blocks` on an empty string returns no blocks.
+    #[test]
+    fn test_parse_host_blocks_empty() {
+        assert!(parse_host_blocks("").is_empty());
+    }
+
+    /// `merge_host_blocks`: existing file has two foreign blocks and one
+    /// matching block. The matching block is replaced, the two foreign blocks
+    /// are preserved, and the result has three blocks total.
+    #[test]
+    fn test_merge_preserves_foreign_blocks_and_replaces_matching() {
+        let existing_content = "# description: foreign one\n# auth: key\nHost foreign-1\n    HostName f1.example.com\n\n# description: old prod\n# auth: key\nHost prod-web\n    HostName 10.0.0.1\n\n# description: foreign two\n# auth: password\nHost foreign-2\n    HostName f2.example.com\n\n";
+        let existing = parse_host_blocks(existing_content);
+        assert_eq!(existing.len(), 3);
+
+        // New blocks contain only prod-web (updated).
+        let new_content = "# description: new prod\n# auth: key\nHost prod-web\n    HostName 10.0.1.50\n";
+        let new_blocks = parse_host_blocks(new_content);
+
+        let merged = merge_host_blocks(existing, new_blocks);
+
+        // Three blocks total.
+        let result_blocks = parse_host_blocks(&merged);
+        assert_eq!(result_blocks.len(), 3, "expected 3 blocks, got: {merged}");
+
+        // Foreign blocks are preserved.
+        assert!(
+            merged.contains("Host foreign-1"),
+            "foreign-1 must be preserved: {merged}"
+        );
+        assert!(
+            merged.contains("Host foreign-2"),
+            "foreign-2 must be preserved: {merged}"
+        );
+
+        // Matching block is replaced with new content.
+        assert!(
+            merged.contains("10.0.1.50"),
+            "new prod-web HostName must appear: {merged}"
+        );
+        assert!(
+            !merged.contains("10.0.0.1"),
+            "old prod-web HostName must be gone: {merged}"
+        );
+
+        // Order: foreign-1 first, then prod-web, then foreign-2.
+        let pos_f1 = merged.find("Host foreign-1").unwrap();
+        let pos_prod = merged.find("Host prod-web").unwrap();
+        let pos_f2 = merged.find("Host foreign-2").unwrap();
+        assert!(pos_f1 < pos_prod, "foreign-1 must precede prod-web");
+        assert!(pos_prod < pos_f2, "prod-web must precede foreign-2");
+    }
+
+    /// `merge_host_blocks`: when the existing file is absent (empty blocks),
+    /// the output equals the rendered blocks exactly.
+    #[test]
+    fn test_merge_absent_file_equals_rendered_blocks() {
+        let new_content = "# description: prod\n# auth: key\nHost prod-web\n    HostName 10.0.1.50\n    User deploy\n";
+        let new_blocks = parse_host_blocks(new_content);
+
+        let merged = merge_host_blocks(Vec::new(), new_blocks);
+
+        // Must contain the rendered block.
+        assert!(
+            merged.contains("Host prod-web"),
+            "prod-web must appear: {merged}"
+        );
+        assert!(
+            merged.contains("    HostName 10.0.1.50"),
+            "HostName must appear: {merged}"
+        );
+    }
+
+    /// `merge_host_blocks`: new blocks not in the existing file are appended
+    /// after the existing blocks.
+    #[test]
+    fn test_merge_new_blocks_appended_after_existing() {
+        let existing_content = "# description: foreign\n# auth: key\nHost foreign-1\n    HostName f1.example.com\n\n";
+        let existing = parse_host_blocks(existing_content);
+
+        let new_content = "# description: prod\n# auth: key\nHost prod-web\n    HostName 10.0.1.50\n";
+        let new_blocks = parse_host_blocks(new_content);
+
+        let merged = merge_host_blocks(existing, new_blocks);
+
+        let pos_foreign = merged.find("Host foreign-1").unwrap();
+        let pos_prod = merged.find("Host prod-web").unwrap();
+        assert!(
+            pos_foreign < pos_prod,
+            "existing foreign block must precede newly appended block"
         );
     }
 
