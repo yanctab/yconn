@@ -134,9 +134,16 @@ keys to be pre-baked into an image rather than distributed to developer machines
   templates will expand to.
 
 **users add**
-: Interactive wizard that prompts for a key and value and writes the entry to the
-  `users:` section of the target layer's config file. Defaults to the user layer
-  (`~/.config/yconn/connections.yaml`). Use **--layer** to target a specific layer.
+: Add a user key/value entry to the target layer's config file. When **--user**
+  *KEY:VALUE* is supplied (repeatable), entries are written directly without any
+  interactive prompting. When **--user** is absent, an interactive wizard prompts
+  for a key and value. Defaults to the user layer (`~/.config/yconn/connections.yaml`).
+  Use **--layer** to target a specific layer.
+
+**--user** *KEY:VALUE*
+: Insert a key/value pair directly, bypassing the interactive wizard. Both the key
+  and value must be non-empty and separated by a colon. May be repeated to write
+  multiple entries in a single invocation.
 
 **users edit** *KEY*
 : Open the source config file that contains the named user entry in **$EDITOR**.

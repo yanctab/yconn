@@ -255,6 +255,10 @@ yconn users show
 yconn users add
 yconn users add --layer project
 
+# Add entries directly without the wizard (repeatable)
+yconn users add --user key1:val1 --user key2:val2
+yconn users add --layer project --user deploy:alice
+
 # Open the source file for a named entry in $EDITOR
 yconn users edit testuser
 yconn users edit testuser --layer user

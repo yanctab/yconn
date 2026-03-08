@@ -83,7 +83,7 @@ yconn groups use work
 | `yconn groups current` | Print the active group name and resolved config file paths |
 | `yconn ssh-config` | Write Host blocks to `~/.ssh/yconn-connections` and update `~/.ssh/config` |
 | `yconn users show` | List all user key/value entries across all layers |
-| `yconn users add` | Interactive wizard to add a user entry to a chosen layer |
+| `yconn users add` | Interactive wizard to add a user entry to a chosen layer; use `--user KEY:VALUE` (repeatable) to skip the wizard |
 | `yconn users edit <key>` | Open the source config file for a user entry in `$EDITOR` |
 
 Global flags: `--all`, `--verbose`

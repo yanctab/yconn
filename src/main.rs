@@ -94,7 +94,7 @@ fn main() -> Result<()> {
                 let cfg = load_and_warn(&renderer, verbose)?;
                 commands::user::show(&cfg, &renderer)
             }
-            UserCommands::Add { layer } => commands::user::add(layer),
+            UserCommands::Add { layer, user_pairs } => commands::user::add(layer, user_pairs),
             UserCommands::Edit { key, layer } => {
                 let cfg = load_and_warn(&renderer, verbose)?;
                 commands::user::edit(&cfg, &key, layer)
