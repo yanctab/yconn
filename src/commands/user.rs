@@ -7,36 +7,53 @@ use anyhow::{anyhow, bail, Context, Result};
 
 use crate::cli::LayerArg;
 use crate::config::{Layer, LoadedConfig};
-use crate::display::Renderer;
+use crate::display::{Renderer, UserRow};
 
 // ─── Public entry points ──────────────────────────────────────────────────────
 
 /// `yconn users show` — list all user entries across layers with source and
 /// shadowing info.
+///
+/// When a `user` key is present in the merged `users:` map it appears as a
+/// normal row. When it is absent but `$USER` is set, a synthetic row with
+/// SOURCE `env (environment variable $USER)` is appended so the effective
+/// username is always visible.
 pub fn show(cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
-    let username = resolve_username(cfg);
-    renderer.print_username_header(&username);
-    renderer.user_list(&cfg.all_users);
+    let rows = build_user_rows(cfg, std::env::var("USER").ok().as_deref());
+    renderer.user_list(&rows);
     Ok(())
 }
 
-/// Resolve the display username for `yconn users show`.
+/// Build the [`UserRow`] vec for `yconn users show`.
 ///
-/// Resolution order:
-/// 1. The value of the `user` key in the merged `users:` map (if present).
-/// 2. The `$USER` environment variable (if set).
-/// 3. An empty string.
-fn resolve_username(cfg: &LoadedConfig) -> String {
-    resolve_username_with_env(cfg, std::env::var("USER").ok().as_deref())
-}
+/// Converts `cfg.all_users` to rows, then — when no `user` key exists in
+/// `cfg.users` but `env_user` is `Some` — appends a synthetic env-var row.
+fn build_user_rows(cfg: &LoadedConfig, env_user: Option<&str>) -> Vec<UserRow> {
+    let mut rows: Vec<UserRow> = cfg
+        .all_users
+        .iter()
+        .map(|e| UserRow {
+            key: e.key.clone(),
+            value: e.value.clone(),
+            source: format!("{} ({})", e.layer.label(), e.source_path.display()),
+            shadowed: e.shadowed,
+        })
+        .collect();
 
-/// Inner implementation that accepts an optional env var value so unit tests
-/// can supply a known value without mutating the process environment.
-fn resolve_username_with_env(cfg: &LoadedConfig, env_user: Option<&str>) -> String {
-    if let Some(entry) = cfg.users.get("user") {
-        return entry.value.clone();
+    // Append a synthetic env-var row when the `user` key is absent from the
+    // active (non-shadowed) users map and $USER is set.
+    if cfg.users.get("user").is_none() {
+        if let Some(u) = env_user {
+            rows.push(UserRow {
+                key: "user".to_string(),
+                value: u.to_string(),
+                source: "env (environment variable $USER)".to_string(),
+                shadowed: false,
+            });
+        }
     }
-    env_user.unwrap_or("").to_string()
+
+    rows
 }
 
 /// `yconn users add` — interactive wizard to add a user entry to a layer.
@@ -423,12 +440,12 @@ mod tests {
         assert_eq!(mode, 0o600);
     }
 
-    // ── resolve_username_with_env ─────────────────────────────────────────────
+    // ── build_user_rows ───────────────────────────────────────────────────────
 
-    /// When the `users:` map contains a `user` key, its value is used as the
-    /// display username regardless of the `$USER` environment variable.
+    /// When the `users:` map contains a `user` key, it appears as a normal row
+    /// (no synthetic env-var row is added).
     #[test]
-    fn test_resolve_username_uses_map_value_when_present() {
+    fn test_build_user_rows_user_key_in_map_no_synthetic_row() {
         let cwd = TempDir::new().unwrap();
         let user_dir = TempDir::new().unwrap();
         write_yaml(
@@ -439,20 +456,30 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user_dir.path()), empty.path());
 
-        let result = resolve_username_with_env(&cfg, Some("bob"));
+        let rows = build_user_rows(&cfg, Some("bob"));
+        // The `user` row comes from the map.
+        let user_row = rows.iter().find(|r| r.key == "user").expect("user row");
+        assert_eq!(user_row.value, "alice");
+        // Source must NOT be the env label.
+        assert!(
+            !user_row.source.contains("environment variable"),
+            "source should not be env label: {}",
+            user_row.source
+        );
+        // No duplicate user rows.
         assert_eq!(
-            result, "alice",
-            "map value should take priority over env var"
+            rows.iter().filter(|r| r.key == "user").count(),
+            1,
+            "should have exactly one user row"
         );
     }
 
-    /// When the `users:` map has no `user` key but `$USER` is set, the env
-    /// var value is used as the display username.
+    /// When the `users:` map has no `user` key but `$USER` is set, a synthetic
+    /// env-var row is appended with SOURCE `env (environment variable $USER)`.
     #[test]
-    fn test_resolve_username_falls_back_to_env_var() {
+    fn test_build_user_rows_no_user_key_synthetic_env_row() {
         let cwd = TempDir::new().unwrap();
         let user_dir = TempDir::new().unwrap();
-        // users map present but no `user` key
         write_yaml(
             user_dir.path(),
             "connections.yaml",
@@ -461,25 +488,29 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user_dir.path()), empty.path());
 
-        let result = resolve_username_with_env(&cfg, Some("bob"));
-        assert_eq!(
-            result, "bob",
-            "should fall back to env var when map has no 'user' key"
+        let rows = build_user_rows(&cfg, Some("bob"));
+        let user_row = rows.iter().find(|r| r.key == "user").expect("synthetic user row");
+        assert_eq!(user_row.value, "bob");
+        assert!(
+            user_row.source.contains("environment variable $USER"),
+            "expected env label in source: {}",
+            user_row.source
         );
+        assert!(!user_row.shadowed);
     }
 
-    /// When neither the `users:` map nor `$USER` is available, the resolved
-    /// username is an empty string.
+    /// When neither the `users:` map nor `$USER` is available, no synthetic row
+    /// is added and no `user` row appears at all.
     #[test]
-    fn test_resolve_username_empty_when_both_absent() {
+    fn test_build_user_rows_no_user_key_no_env_no_row() {
         let cwd = TempDir::new().unwrap();
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), None, empty.path());
 
-        let result = resolve_username_with_env(&cfg, None);
-        assert_eq!(
-            result, "",
-            "should be empty string when no map value and no env var"
+        let rows = build_user_rows(&cfg, None);
+        assert!(
+            rows.iter().all(|r| r.key != "user"),
+            "should have no user row when both absent"
         );
     }
 }

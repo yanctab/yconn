@@ -445,30 +445,12 @@ impl Renderer {
         print!("{}", self.render_config_status(status));
     }
 
-    /// Print the `Username: <value>` header line followed by a blank line.
-    ///
-    /// Called before [`user_list`] so the resolved username appears above the
-    /// table.  The header is always printed, even when `username` is empty.
-    pub fn print_username_header(&self, username: &str) {
-        println!("Username: {username}");
-        println!();
-    }
-
     /// Print the user list table (`yconn users show`).
     ///
-    /// Accepts a slice of [`crate::config::UserEntry`] directly to avoid
-    /// requiring callers to construct [`UserRow`] manually.
-    pub fn user_list(&self, entries: &[crate::config::UserEntry]) {
-        let rows: Vec<UserRow> = entries
-            .iter()
-            .map(|e| UserRow {
-                key: e.key.clone(),
-                value: e.value.clone(),
-                source: format!("{} ({})", e.layer.label(), e.source_path.display()),
-                shadowed: e.shadowed,
-            })
-            .collect();
-        print!("{}", self.render_user_list(&rows));
+    /// Accepts a slice of [`UserRow`] so callers can inject synthetic rows
+    /// (e.g. an env-var fallback for the `user` key).
+    pub fn user_list(&self, rows: &[UserRow]) {
+        print!("{}", self.render_user_list(rows));
     }
 
     /// Print the group list table (`yconn group list`).
