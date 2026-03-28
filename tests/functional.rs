@@ -1120,11 +1120,11 @@ fn ssh_config_skip_user_omits_user_lines() {
     );
 }
 
-/// `yconn ssh-config install` with an unresolved `${t1user}` template emits a
-/// warning on stderr that contains both "unresolved" and the fix command
-/// `yconn users add --user t1user:<value>`.
+/// `yconn ssh-config install` with an unresolved `${t1user}` template prompts
+/// for the missing value and, once provided, writes the Host block with the
+/// resolved user and persists the value to the user-layer config.
 #[test]
-fn ssh_config_unresolved_user_template_emits_fix_command_in_warning() {
+fn ssh_config_unresolved_user_template_prompts_and_resolves() {
     let env = TestEnv::new();
 
     env.write_user_config(
@@ -1132,17 +1132,34 @@ fn ssh_config_unresolved_user_template_emits_fix_command_in_warning() {
         "connections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth: password\n    description: test\n",
     );
 
-    // Run without --dry-run; the warning should appear on stderr regardless.
-    let out = env.run(&["ssh-config", "install"]);
+    // Provide the value via stdin.
+    let out = env.run_with_stdin(&["ssh-config", "install"], "alice\n");
+    TestEnv::assert_ok(&out);
 
-    let stderr = String::from_utf8_lossy(&out.stderr);
+    let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stderr.contains("unresolved"),
-        "expected 'unresolved' in stderr, got: {stderr}"
+        stdout.contains("Missing user variable '${t1user}' used by: srv"),
+        "expected prompt for missing variable in stdout, got: {stdout}"
     );
     assert!(
-        stderr.contains("yconn users add --user t1user:<value>"),
-        "expected fix command in stderr, got: {stderr}"
+        stdout.contains("Added user entry 't1user'"),
+        "expected confirmation in stdout, got: {stdout}"
+    );
+
+    // Verify the Host block was written with the resolved value.
+    let host_blocks =
+        fs::read_to_string(env.home.path().join(".ssh").join("yconn-connections")).unwrap();
+    assert!(
+        host_blocks.contains("User alice"),
+        "expected 'User alice' in Host block, got: {host_blocks}"
+    );
+
+    // Verify the value was persisted to the user-layer config.
+    let user_config =
+        fs::read_to_string(env.xdg_config.path().join("yconn").join("connections.yaml")).unwrap();
+    assert!(
+        user_config.contains("t1user:") && user_config.contains("alice"),
+        "expected t1user entry in user config, got: {user_config}"
     );
 }
 
@@ -1878,5 +1895,86 @@ fn install_updates_existing_with_y_and_appends_new() {
     assert!(
         stdout.contains("Writing: connection beta ->"),
         "expected 'Writing: connection beta ->' in stdout for beta, got: {stdout}"
+    );
+}
+
+// ─── yconn install — missing user variable prompting ─────────────────────────
+
+/// `yconn install` with a project config containing `${t1user}` prompts for
+/// the missing value, writes it to the user-layer config, and completes the
+/// install.
+#[test]
+fn install_missing_user_variable_prompts_and_writes_value() {
+    let env = TestEnv::new();
+
+    env.write_project_config(
+        "connections",
+        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth: password\n    description: \"Alpha server\"\n",
+    );
+
+    // Provide the value for the missing user variable via stdin.
+    let out = env.run_with_stdin(&["install"], "alice\n");
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Missing user variable '${t1user}' used by: alpha"),
+        "expected prompt for missing variable in stdout, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Added user entry 't1user'"),
+        "expected confirmation in stdout, got: {stdout}"
+    );
+
+    // Verify the connection was installed.
+    let user_config = env.xdg_config.path().join("yconn").join("connections.yaml");
+    assert!(user_config.exists(), "user config must be created");
+    let content = fs::read_to_string(&user_config).unwrap();
+    assert!(content.contains("alpha:"), "alpha not found in user config");
+    assert!(
+        content.contains("t1user:") && content.contains("alice"),
+        "t1user entry must be written to user config: {content}"
+    );
+}
+
+/// `yconn ssh-config install` with a missing user variable prompts and writes
+/// the value, then generates correct Host blocks with the resolved user.
+#[test]
+fn ssh_config_install_missing_user_variable_prompts_and_generates_correct_host_blocks() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        "connections:\n  conn-a:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth: password\n    description: A\n  conn-b:\n    host: 10.0.0.2\n    user: \"${t1user}\"\n    auth: password\n    description: B\n",
+    );
+
+    // Both connections share the same ${t1user} key — should prompt only once.
+    let out = env.run_with_stdin(&["ssh-config", "install"], "bob\n");
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // Only one prompt for the shared key.
+    let prompt_count = stdout.matches("Missing user variable").count();
+    assert_eq!(
+        prompt_count, 1,
+        "should prompt only once for the same key, got {prompt_count}"
+    );
+    // Both connections should be listed.
+    assert!(
+        stdout.contains("conn-a") && stdout.contains("conn-b"),
+        "prompt should list both connections, got: {stdout}"
+    );
+
+    // Verify Host blocks have the resolved user.
+    let host_blocks =
+        fs::read_to_string(env.home.path().join(".ssh").join("yconn-connections")).unwrap();
+    assert!(
+        host_blocks.contains("User bob"),
+        "expected 'User bob' in Host blocks, got: {host_blocks}"
+    );
+    // No unresolved token should remain.
+    assert!(
+        !host_blocks.contains("${t1user}"),
+        "unresolved token should not appear in Host blocks: {host_blocks}"
     );
 }

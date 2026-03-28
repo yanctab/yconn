@@ -140,7 +140,7 @@ fn layer_arg_to_layer(layer: Option<LayerArg>) -> Layer {
     }
 }
 
-fn layer_path(layer: Layer) -> Result<PathBuf> {
+pub(crate) fn layer_path(layer: Layer) -> Result<PathBuf> {
     match layer {
         Layer::System => Ok(PathBuf::from("/etc/yconn")),
         Layer::User => {
@@ -222,7 +222,7 @@ fn resolve_edit_path(cfg: &LoadedConfig, key: &str, layer: Option<LayerArg>) -> 
 // ─── YAML write helper ────────────────────────────────────────────────────────
 
 /// Append (or create) a `users:` entry in the target YAML file.
-fn write_user_entry(target: &Path, key: &str, value: &str) -> Result<()> {
+pub(crate) fn write_user_entry(target: &Path, key: &str, value: &str) -> Result<()> {
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;

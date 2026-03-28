@@ -3,13 +3,16 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::io::{self, BufRead, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
 use crate::config::{Connection, LoadedConfig};
 use crate::display::Renderer;
+
+use super::user::write_user_entry;
 
 // ─── Translation helpers ──────────────────────────────────────────────────────
 
@@ -297,7 +300,7 @@ fn merge_host_blocks(existing: Vec<HostBlock>, new_blocks: Vec<HostBlock>) -> St
 /// token and returns the key name so the caller can compose a fix command.
 ///
 /// Returns `None` if no `${...}` token is present.
-fn extract_unresolved_key(value: &str) -> Option<&str> {
+pub(crate) fn extract_unresolved_key(value: &str) -> Option<&str> {
     let start = value.find("${")?;
     let rest = &value[start + 2..];
     let end = rest.find('}')?;
@@ -336,6 +339,106 @@ pub fn remove_include_line(home: &Path) -> Result<bool> {
     Ok(true)
 }
 
+// ─── Unresolved user variable helpers ─────────────────────────────────────────
+
+/// Extract all `${key}` tokens from a string, returning the key names.
+fn extract_all_template_keys(value: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let mut rest = value;
+    while let Some(start) = rest.find("${") {
+        let after = &rest[start + 2..];
+        if let Some(end) = after.find('}') {
+            let key = &after[..end];
+            if !key.is_empty() {
+                keys.push(key.to_string());
+            }
+            rest = &after[end + 1..];
+        } else {
+            break;
+        }
+    }
+    keys
+}
+
+/// Scan all connections for `${key}` tokens in user fields that cannot be
+/// resolved by inline_overrides or cfg.users. Returns a vec of
+/// `(key_name, vec_of_connection_names)` sorted by key name.
+fn collect_unresolved_keys(
+    cfg: &LoadedConfig,
+    inline_overrides: &HashMap<String, String>,
+) -> Vec<(String, Vec<String>)> {
+    let mut unresolved: HashMap<String, Vec<String>> = HashMap::new();
+
+    for conn in &cfg.connections {
+        for key in extract_all_template_keys(&conn.user) {
+            // Check if the key can be resolved.
+            if inline_overrides.contains_key(&key) {
+                continue;
+            }
+            if cfg.users.contains_key(&key) {
+                continue;
+            }
+            // Special case: ${user} resolves from $USER env var.
+            if key == "user" && std::env::var("USER").is_ok() {
+                continue;
+            }
+            unresolved.entry(key).or_default().push(conn.name.clone());
+        }
+    }
+
+    let mut result: Vec<(String, Vec<String>)> = unresolved.into_iter().collect();
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    result
+}
+
+/// Resolve the path to the user-layer connections.yaml file.
+fn resolve_user_layer_config_path() -> Result<PathBuf> {
+    let base = dirs::config_dir()
+        .ok_or_else(|| anyhow::anyhow!("cannot determine user config directory"))?;
+    Ok(base.join("yconn").join("connections.yaml"))
+}
+
+/// Prompt the user for each missing user variable, write to target file, and
+/// return the list of `(key, value)` pairs that were written.
+fn prompt_missing_keys(
+    target_file: &Path,
+    missing: &[(String, Vec<String>)],
+    input: &mut dyn BufRead,
+    output: &mut dyn Write,
+) -> Result<Vec<(String, String)>> {
+    let mut prompted = Vec::new();
+
+    for (key, conn_names) in missing {
+        writeln!(
+            output,
+            "Missing user variable '${{{key}}}' used by: {}",
+            conn_names.join(", ")
+        )?;
+        write!(output, "  Value for '{key}': ")?;
+        output.flush()?;
+
+        let mut line = String::new();
+        input.read_line(&mut line)?;
+        let value = line.trim().to_string();
+
+        if value.is_empty() {
+            bail!("aborted: no value provided for user variable '{key}'");
+        }
+
+        write_user_entry(target_file, key, &value)
+            .with_context(|| format!("failed to write user entry '{key}'"))?;
+        writeln!(
+            output,
+            "  Added user entry '{key}' to {}",
+            target_file.display()
+        )?;
+
+        prompted.push((key.clone(), value));
+    }
+
+    Ok(prompted)
+}
+
 // ─── Command entry points ─────────────────────────────────────────────────────
 
 pub fn run_install(
@@ -346,10 +449,48 @@ pub fn run_install(
     inline_overrides: &HashMap<String, String>,
     skip_user: bool,
 ) -> Result<()> {
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    run_install_impl(
+        cfg,
+        renderer,
+        dry_run,
+        home,
+        inline_overrides,
+        skip_user,
+        &mut stdin.lock(),
+        &mut stdout.lock(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn run_install_impl(
+    cfg: &LoadedConfig,
+    renderer: &Renderer,
+    dry_run: bool,
+    home: &Path,
+    inline_overrides: &HashMap<String, String>,
+    skip_user: bool,
+    input: &mut dyn BufRead,
+    output: &mut dyn Write,
+) -> Result<()> {
+    // Pre-pass: detect unresolved ${key} tokens and prompt for missing values.
+    let mut effective_overrides = inline_overrides.clone();
+    let missing = collect_unresolved_keys(cfg, &effective_overrides);
+    if !missing.is_empty() {
+        let user_layer_file = resolve_user_layer_config_path()?;
+        let prompted = prompt_missing_keys(&user_layer_file, &missing, input, output)?;
+        // Add prompted values to effective_overrides so expand_user_field
+        // resolves them without needing to reload config.
+        for (key, value) in prompted {
+            effective_overrides.insert(key, value);
+        }
+    }
+
     // Expand ${<key>} templates in the user field of each connection.
     let mut connections: Vec<Connection> = cfg.connections.clone();
     for conn in &mut connections {
-        let (expanded, warnings) = cfg.expand_user_field(&conn.user, inline_overrides);
+        let (expanded, warnings) = cfg.expand_user_field(&conn.user, &effective_overrides);
         for w in &warnings {
             // Extract the unresolved key from the expanded user field so we can
             // suggest the fix command.  The expanded value still contains the
@@ -1101,6 +1242,126 @@ mod tests {
         assert!(
             !out.contains("User "),
             "User line must be absent with skip_user=true"
+        );
+    }
+
+    // ── unresolved user variable prompting in run_install_impl ────────────────
+
+    /// Helper: build a LoadedConfig from user-layer YAML.
+    fn load_cfg(yaml: &str) -> (crate::config::LoadedConfig, tempfile::TempDir) {
+        use crate::config;
+        use tempfile::TempDir;
+
+        let user_dir = TempDir::new().unwrap();
+        let cwd = TempDir::new().unwrap();
+        let sys = TempDir::new().unwrap();
+        fs::write(user_dir.path().join("connections.yaml"), yaml).unwrap();
+
+        let cfg = config::load_impl(
+            cwd.path(),
+            Some("connections"),
+            false,
+            Some(user_dir.path()),
+            sys.path(),
+        )
+        .unwrap();
+
+        (cfg, user_dir)
+    }
+
+    /// `run_install_impl` with an unresolved `${t1user}` template halts
+    /// and prompts. After the user supplies a value, the Host block uses
+    /// the resolved value.
+    #[test]
+    fn test_run_install_impl_unresolved_key_prompts_and_resolves() {
+        let yaml = "connections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth: password\n    description: test\n";
+        let (cfg, _user_dir) = load_cfg(yaml);
+
+        let home = tempfile::TempDir::new().unwrap();
+        let ssh_dir = home.path().join(".ssh");
+        fs::create_dir_all(&ssh_dir).unwrap();
+
+        let renderer = crate::display::Renderer::new(false);
+
+        let mut input = "alice\n".as_bytes();
+        let mut output = Vec::<u8>::new();
+
+        // We need XDG_CONFIG_HOME set for resolve_user_layer_config_path.
+        // But the function uses dirs::config_dir() which reads XDG_CONFIG_HOME.
+        // In test context, we set it temporarily.
+        let xdg_dir = tempfile::TempDir::new().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", xdg_dir.path());
+
+        let result = super::run_install_impl(
+            &cfg,
+            &renderer,
+            false,
+            home.path(),
+            &HashMap::new(),
+            false,
+            &mut input,
+            &mut output,
+        );
+        result.unwrap();
+
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(
+            output_str.contains("Missing user variable '${t1user}' used by: srv"),
+            "expected prompt for missing variable, got: {output_str}"
+        );
+        assert!(
+            output_str.contains("Added user entry 't1user'"),
+            "expected confirmation, got: {output_str}"
+        );
+
+        // Check that the Host block was written with the resolved value.
+        let host_blocks =
+            fs::read_to_string(home.path().join(".ssh").join("yconn-connections")).unwrap();
+        assert!(
+            host_blocks.contains("User alice"),
+            "expected 'User alice' in Host block, got: {host_blocks}"
+        );
+    }
+
+    /// `run_install_impl` with all keys already resolved produces no prompts.
+    #[test]
+    fn test_run_install_impl_resolved_keys_no_prompt() {
+        let yaml = "users:\n  t1user: \"bob\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth: password\n    description: test\n";
+        let (cfg, _user_dir) = load_cfg(yaml);
+
+        let home = tempfile::TempDir::new().unwrap();
+        let ssh_dir = home.path().join(".ssh");
+        fs::create_dir_all(&ssh_dir).unwrap();
+
+        let renderer = crate::display::Renderer::new(false);
+
+        let mut input = "".as_bytes();
+        let mut output = Vec::<u8>::new();
+
+        let result = super::run_install_impl(
+            &cfg,
+            &renderer,
+            false,
+            home.path(),
+            &HashMap::new(),
+            false,
+            &mut input,
+            &mut output,
+        );
+        result.unwrap();
+
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(
+            !output_str.contains("Missing user variable"),
+            "should not prompt when all keys are resolved, got: {output_str}"
+        );
+
+        // Check that the Host block uses the resolved value.
+        let host_blocks =
+            fs::read_to_string(home.path().join(".ssh").join("yconn-connections")).unwrap();
+        assert!(
+            host_blocks.contains("User bob"),
+            "expected 'User bob' in Host block, got: {host_blocks}"
         );
     }
 }
