@@ -5,6 +5,7 @@
 // and copies all connections into the target layer file. New connections are
 // appended; existing ones prompt the user before overwriting.
 
+use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
@@ -14,6 +15,7 @@ use crate::cli::LayerArg;
 use crate::config::{Layer, LoadedConfig};
 
 use super::add::{entry_exists, insert_connection, set_private_permissions};
+use super::user::write_user_entry;
 
 // ─── Public entry point ───────────────────────────────────────────────────────
 
@@ -109,6 +111,17 @@ pub(crate) fn run_impl(
         String::new()
     };
 
+    // Pre-pass: detect unresolved ${key} tokens in user fields and prompt.
+    let missing = find_unresolved_user_keys(&project_content, &target_content, &connection_names);
+    if !missing.is_empty() {
+        prompt_missing_user_keys(target_file, &missing, input, output)?;
+        // Re-read the target content since write_user_entry may have modified it.
+        if target_file.exists() {
+            target_content = std::fs::read_to_string(target_file)
+                .with_context(|| format!("failed to read {}", target_file.display()))?;
+        }
+    }
+
     let mut modified = false;
 
     for name in &connection_names {
@@ -172,6 +185,148 @@ pub(crate) fn run_impl(
         std::fs::write(target_file, &target_content)
             .with_context(|| format!("failed to write {}", target_file.display()))?;
         set_private_permissions(target_file)?;
+    }
+
+    Ok(())
+}
+
+// ─── Unresolved user variable helpers ─────────────────────────────────────────
+
+/// Extract all `${key}` tokens from a string, returning the key names.
+fn extract_all_template_keys(value: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let mut rest = value;
+    while let Some(start) = rest.find("${") {
+        let after = &rest[start + 2..];
+        if let Some(end) = after.find('}') {
+            let key = &after[..end];
+            if !key.is_empty() {
+                keys.push(key.to_string());
+            }
+            rest = &after[end + 1..];
+        } else {
+            break;
+        }
+    }
+    keys
+}
+
+/// Extract the user field value for a named connection from YAML content.
+///
+/// Looks for `    user: <value>` lines within the connection block (4-space
+/// indent under the 2-space connection name).
+fn extract_user_field(content: &str, conn_name: &str) -> Option<String> {
+    let header = format!("  {conn_name}:");
+    let mut in_block = false;
+
+    for line in content.lines() {
+        if line == header || line.starts_with(&format!("{header} ")) {
+            in_block = true;
+            continue;
+        }
+        if in_block {
+            if !line.starts_with("    ") {
+                break;
+            }
+            if let Some(rest) = line.strip_prefix("    user:") {
+                let val = rest.trim().trim_matches('"').trim_matches('\'');
+                return Some(val.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Extract existing user keys from the `users:` section of a YAML file.
+fn extract_existing_user_keys(content: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let mut in_users = false;
+
+    for line in content.lines() {
+        if line == "users:" || line.starts_with("users:") {
+            in_users = true;
+            continue;
+        }
+        if in_users {
+            if !line.is_empty() && !line.starts_with(' ') && !line.starts_with('\t') {
+                break;
+            }
+            if let Some(rest) = line.strip_prefix("  ") {
+                if let Some(key) = rest.split_once(':').map(|(k, _)| k) {
+                    if !key.is_empty() && !key.starts_with(' ') {
+                        keys.push(key.to_string());
+                    }
+                }
+            }
+        }
+    }
+    keys
+}
+
+/// Scan project connections for `${key}` tokens in user fields that are not
+/// resolved in the target file's `users:` section. Returns a map from
+/// unresolved key name to the list of connection names that reference it.
+fn find_unresolved_user_keys(
+    project_content: &str,
+    target_content: &str,
+    connection_names: &[String],
+) -> Vec<(String, Vec<String>)> {
+    let existing_keys = extract_existing_user_keys(target_content);
+
+    // key -> list of connection names
+    let mut unresolved: HashMap<String, Vec<String>> = HashMap::new();
+
+    for conn_name in connection_names {
+        if let Some(user_val) = extract_user_field(project_content, conn_name) {
+            for key in extract_all_template_keys(&user_val) {
+                if !existing_keys.contains(&key) {
+                    unresolved
+                        .entry(key.clone())
+                        .or_default()
+                        .push(conn_name.clone());
+                }
+            }
+        }
+    }
+
+    // Return in sorted order for deterministic output.
+    let mut result: Vec<(String, Vec<String>)> = unresolved.into_iter().collect();
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    result
+}
+
+/// Prompt the user for each missing user variable and write the values to
+/// the target config file.
+fn prompt_missing_user_keys(
+    target_file: &Path,
+    missing: &[(String, Vec<String>)],
+    input: &mut dyn BufRead,
+    output: &mut dyn Write,
+) -> Result<()> {
+    for (key, conn_names) in missing {
+        writeln!(
+            output,
+            "Missing user variable '${{{key}}}' used by: {}",
+            conn_names.join(", ")
+        )?;
+        write!(output, "  Value for '{key}': ")?;
+        output.flush()?;
+
+        let mut line = String::new();
+        input.read_line(&mut line)?;
+        let value = line.trim();
+
+        if value.is_empty() {
+            bail!("aborted: no value provided for user variable '{key}'");
+        }
+
+        write_user_entry(target_file, key, value)
+            .with_context(|| format!("failed to write user entry '{key}'"))?;
+        writeln!(
+            output,
+            "  Added user entry '{key}' to {}",
+            target_file.display()
+        )?;
     }
 
     Ok(())
@@ -487,5 +642,110 @@ mod tests {
         assert!(result.contains("host: new"), "new host not found");
         assert!(!result.contains("host: old"), "old host still present");
         assert!(result.contains("beta:"), "beta should still be present");
+    }
+
+    // ── unresolved user variable prompting ───────────────────────────────────
+
+    #[test]
+    fn test_unresolved_user_variable_triggers_prompt_and_writes_value() {
+        let dir = TempDir::new().unwrap();
+        let project_file = dir.path().join("project.yaml");
+        let target_file = dir.path().join("target.yaml");
+
+        // Project config with a ${t1user} template in the user field.
+        fs::write(
+            &project_file,
+            "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth: password\n    description: \"test\"\n",
+        ).unwrap();
+
+        // Provide the prompted value followed by newline (no further stdin needed
+        // since there is only one new connection to append).
+        let (result, output) = run_with_stdin(&project_file, &target_file, "alice\n");
+        result.unwrap();
+
+        // The prompted value should be written to the target file's users: section.
+        let target = fs::read_to_string(&target_file).unwrap();
+        assert!(
+            target.contains("users:"),
+            "users: section must exist in target: {target}"
+        );
+        assert!(
+            target.contains("t1user:"),
+            "t1user entry must exist in target: {target}"
+        );
+        assert!(
+            target.contains("alice"),
+            "alice value must exist in target: {target}"
+        );
+
+        // Output should mention the missing variable and the connection.
+        assert!(
+            output.contains("Missing user variable '${t1user}' used by: alpha"),
+            "expected missing variable prompt in output, got: {output}"
+        );
+        assert!(
+            output.contains("Added user entry 't1user'"),
+            "expected confirmation in output, got: {output}"
+        );
+    }
+
+    #[test]
+    fn test_all_keys_resolved_skips_prompting() {
+        let dir = TempDir::new().unwrap();
+        let project_file = dir.path().join("project.yaml");
+        let target_file = dir.path().join("target.yaml");
+
+        // Project config with a ${t1user} template.
+        fs::write(
+            &project_file,
+            "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth: password\n    description: \"test\"\n",
+        ).unwrap();
+
+        // Pre-populate target with the t1user entry already resolved.
+        fs::write(&target_file, "version: 1\n\nusers:\n  t1user: \"alice\"\n").unwrap();
+
+        // No stdin data needed — no prompting should occur.
+        let (result, output) = run_with_stdin(&project_file, &target_file, "");
+        result.unwrap();
+
+        // No "Missing user variable" prompt should appear.
+        assert!(
+            !output.contains("Missing user variable"),
+            "should not prompt when key is already resolved, got: {output}"
+        );
+    }
+
+    #[test]
+    fn test_multiple_connections_same_missing_key_single_prompt() {
+        let dir = TempDir::new().unwrap();
+        let project_file = dir.path().join("project.yaml");
+        let target_file = dir.path().join("target.yaml");
+
+        // Two connections referencing the same ${t1user} key.
+        fs::write(
+            &project_file,
+            "version: 1\n\nconnections:\n  conn-a:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth: password\n    description: \"a\"\n  conn-b:\n    host: 10.0.0.2\n    user: \"${t1user}\"\n    auth: password\n    description: \"b\"\n",
+        ).unwrap();
+
+        // Provide a single value — should only be prompted once.
+        let (result, output) = run_with_stdin(&project_file, &target_file, "alice\n");
+        result.unwrap();
+
+        // The prompt should list both connection names.
+        assert!(
+            output.contains("conn-a") && output.contains("conn-b"),
+            "prompt should list both connections, got: {output}"
+        );
+
+        // Only one "Missing user variable" line should appear.
+        let prompt_count = output.matches("Missing user variable").count();
+        assert_eq!(
+            prompt_count, 1,
+            "should prompt only once for the same key, got {prompt_count} prompts"
+        );
+
+        // Value should be written.
+        let target = fs::read_to_string(&target_file).unwrap();
+        assert!(target.contains("alice"), "prompted value must be written");
     }
 }
