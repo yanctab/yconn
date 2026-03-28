@@ -131,10 +131,20 @@ pub(crate) fn run_impl(
             if answer == "y" || answer == "Y" {
                 // Replace the existing entry.
                 target_content = replace_connection(&target_content, name, &entry);
-                writeln!(output, "Updating: {}", target_file.display())?;
+                writeln!(
+                    output,
+                    "Updating: connection {} -> {}",
+                    name,
+                    target_file.display()
+                )?;
                 modified = true;
             } else {
-                writeln!(output, "Skipping: {} (already exists)", name)?;
+                writeln!(
+                    output,
+                    "Skipping: connection {} -> {} (already up to date)",
+                    name,
+                    target_file.display()
+                )?;
             }
         } else {
             // Append the new entry.
@@ -143,7 +153,12 @@ pub(crate) fn run_impl(
             } else {
                 target_content = insert_connection(&target_content, name, &entry);
             }
-            writeln!(output, "Writing: {}", target_file.display())?;
+            writeln!(
+                output,
+                "Writing: connection {} -> {}",
+                name,
+                target_file.display()
+            )?;
             modified = true;
         }
     }
@@ -323,8 +338,12 @@ mod tests {
 
         let target_str = target_file.display().to_string();
         assert!(
-            output.contains(&format!("Writing: {target_str}")),
-            "expected 'Writing: {target_str}' in output, got: {output}"
+            output.contains(&format!("Writing: connection alpha -> {target_str}")),
+            "expected 'Writing: connection alpha -> {target_str}' in output, got: {output}"
+        );
+        assert!(
+            output.contains(&format!("Writing: connection beta -> {target_str}")),
+            "expected 'Writing: connection beta -> {target_str}' in output, got: {output}"
         );
     }
 
@@ -364,8 +383,8 @@ mod tests {
 
         let target_str = target_file.display().to_string();
         assert!(
-            output.contains(&format!("Updating: {target_str}")),
-            "expected 'Updating: {target_str}' in output, got: {output}"
+            output.contains(&format!("Updating: connection alpha -> {target_str}")),
+            "expected 'Updating: connection alpha -> {target_str}' in output, got: {output}"
         );
     }
 
@@ -399,9 +418,10 @@ mod tests {
             "old host should be preserved when skipping"
         );
 
+        let target_str = target_file.display().to_string();
         assert!(
-            output.contains("Skipping: alpha (already exists)"),
-            "expected 'Skipping: alpha (already exists)' in output, got: {output}"
+            output.contains(&format!("Skipping: connection alpha -> {target_str} (already up to date)")),
+            "expected 'Skipping: connection alpha -> {target_str} (already up to date)' in output, got: {output}"
         );
     }
 

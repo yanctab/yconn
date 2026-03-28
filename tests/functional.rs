@@ -1822,6 +1822,16 @@ fn install_copies_new_connections_to_user_layer() {
         content.contains("10.0.0.2"),
         "beta host not found in user config"
     );
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Writing: connection alpha ->"),
+        "expected 'Writing: connection alpha ->' in stdout, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Writing: connection beta ->"),
+        "expected 'Writing: connection beta ->' in stdout, got: {stdout}"
+    );
 }
 
 /// `yconn install` with `alpha` already in the user layer and `y` on stdin
@@ -1862,11 +1872,11 @@ fn install_updates_existing_with_y_and_appends_new() {
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("Updating:"),
-        "expected 'Updating:' in stdout, got: {stdout}"
+        stdout.contains("Updating: connection alpha ->"),
+        "expected 'Updating: connection alpha ->' in stdout, got: {stdout}"
     );
     assert!(
-        stdout.contains("Writing:"),
-        "expected 'Writing:' in stdout for beta, got: {stdout}"
+        stdout.contains("Writing: connection beta ->"),
+        "expected 'Writing: connection beta ->' in stdout for beta, got: {stdout}"
     );
 }
