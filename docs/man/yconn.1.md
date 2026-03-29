@@ -213,8 +213,9 @@ connections:
     host: 10.0.1.50
     user: ${testuser}   # expands to "testusername" at connect time
     port: 22          # optional, defaults to 22
-    auth: key         # "key" | "password"
-    key: ~/.ssh/prod_deploy_key
+    auth:
+      type: key       # "key" | "password"
+      key: ~/.ssh/prod_deploy_key
     description: "Primary production web server"
     group: work       # optional inline group tag
     link: https://wiki.internal/servers/prod-web
@@ -222,15 +223,17 @@ connections:
   web-*:
     host: "${name}.corp.com"   # ${name} is replaced with the matched input
     user: deploy
-    auth: key
-    key: ~/.ssh/web_key
+    auth:
+      type: key
+      key: ~/.ssh/web_key
     description: "Any web server matching web-*"
 
   "app[1..20]":
     host: "${name}.internal"   # app5 → app5.internal
     user: ops
-    auth: key
-    key: ~/.ssh/ops_key
+    auth:
+      type: key
+      key: ~/.ssh/ops_key
     description: "App servers 1 through 20"
 ```
 

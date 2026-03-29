@@ -71,7 +71,7 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "connections:\n  srv:\n    host: h\n    user: u\n    auth: key\n    description: d\n",
+            "connections:\n  srv:\n    host: h\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n",
         );
 
         let empty = TempDir::new().unwrap();
@@ -114,7 +114,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  a:\n    host: h\n    user: u\n    auth: key\n    description: d\n  b:\n    host: h2\n    user: u2\n    auth: key\n    description: d2\n",
+            "connections:\n  a:\n    host: h\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n  b:\n    host: h2\n    user: u2\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d2\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user.path()), empty.path());

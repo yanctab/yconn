@@ -135,7 +135,7 @@ fn conn_to_row(c: &Connection) -> ConnectionRow {
         host: c.host.clone(),
         user: c.user.clone(),
         port: c.port,
-        auth: c.auth.clone(),
+        auth: c.auth.type_label().to_string(),
         source: c.layer.label().to_string(),
         description: c.description.clone(),
         shadowed: c.shadowed,
@@ -159,13 +159,13 @@ mod tests {
 
     fn simple_conn(name: &str, host: &str) -> String {
         format!(
-            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth: key\n    description: desc\n"
+            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n"
         )
     }
 
     fn conn_with_group(name: &str, host: &str, group: &str) -> String {
         format!(
-            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth: key\n    description: desc\n    group: {group}\n"
+            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n    group: {group}\n"
         )
     }
 
@@ -388,7 +388,7 @@ mod tests {
 
     fn conn_yaml_with_user(name: &str, host: &str, user: &str) -> String {
         format!(
-            "connections:\n  {name}:\n    host: {host}\n    user: {user}\n    auth: key\n    description: desc\n"
+            "connections:\n  {name}:\n    host: {host}\n    user: {user}\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n"
         )
     }
 
@@ -473,7 +473,7 @@ mod tests {
         // Two connections: one with a resolved placeholder, one with an unresolved one.
         let yaml = conn_yaml_with_users_section(
             &format!(
-                "connections:\n  srv1:\n    host: 10.0.0.1\n    user: ${{known_user}}\n    auth: key\n    description: desc\n  srv2:\n    host: 10.0.0.2\n    user: ${{unknown_user}}\n    auth: key\n    description: desc\n"
+                "connections:\n  srv1:\n    host: 10.0.0.1\n    user: ${{known_user}}\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n  srv2:\n    host: 10.0.0.2\n    user: ${{unknown_user}}\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n"
             ),
             "  known_user: admin",
         );
@@ -509,7 +509,7 @@ mod tests {
 
         let yaml = conn_yaml_with_users_section(
             &format!(
-                "connections:\n  srv1:\n    host: 10.0.0.1\n    user: ${{deploy_user}}\n    auth: key\n    description: desc\n  srv2:\n    host: 10.0.0.2\n    user: ${{deploy_user}}\n    auth: key\n    description: desc\n"
+                "connections:\n  srv1:\n    host: 10.0.0.1\n    user: ${{deploy_user}}\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n  srv2:\n    host: 10.0.0.2\n    user: ${{deploy_user}}\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n"
             ),
             "  deploy_user: admin",
         );

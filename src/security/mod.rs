@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_credential_fields_clean_yaml() {
-        let yaml = "connections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth: key\n";
+        let yaml = "connections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n";
         let path = std::path::Path::new("/repo/.yconn/connections.yaml");
         let warnings = check_credential_fields(path, yaml);
         assert!(warnings.is_empty());

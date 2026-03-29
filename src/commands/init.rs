@@ -26,8 +26,9 @@ connections:
   #   host: 10.0.1.50
   #   user: deploy
   #   port: 22        # optional, defaults to 22
-  #   auth: key       # key | password
-  #   key: ~/.ssh/id_rsa
+  #   auth:
+  #     type: key      # key | password
+  #     key: ~/.ssh/id_rsa
   #   description: \"Example server\"
   #   link: https://wiki.internal/servers/example   # optional
 ";

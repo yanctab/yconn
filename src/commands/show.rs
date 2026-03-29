@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use serde::Serialize;
 
-use crate::config::LoadedConfig;
+use crate::config::{Auth, LoadedConfig};
 use crate::display::{ConnectionDetail, Renderer};
 
 // ─── Dump serialisation types ─────────────────────────────────────────────────
@@ -15,9 +15,7 @@ struct DumpConn {
     host: String,
     user: String,
     port: u16,
-    auth: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    key: Option<String>,
+    auth: Auth,
     description: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     link: Option<String>,
@@ -46,7 +44,6 @@ fn build_dump_yaml(cfg: &LoadedConfig) -> Result<String> {
                 user: conn.user.clone(),
                 port: conn.port,
                 auth: conn.auth.clone(),
-                key: conn.key.clone(),
                 description: conn.description.clone(),
                 link: conn.link.clone(),
                 group: conn.group.clone(),
@@ -144,8 +141,9 @@ pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str) -> Result<()> {
         host: conn.host.clone(),
         user: conn.user.clone(),
         port: conn.port,
-        auth: conn.auth.clone(),
-        key: conn.key.clone(),
+        auth: conn.auth.type_label().to_string(),
+        key: conn.auth.key().map(str::to_string),
+        cmd: conn.auth.cmd().map(str::to_string),
         description: conn.description.clone(),
         link: conn.link.clone(),
         source_label: conn.layer.label().to_string(),
@@ -193,7 +191,7 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Test server\n",
+            "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: Test server\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
@@ -229,7 +227,7 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "connections:\n  web:\n    host: 1.2.3.4\n    user: ${testuser}\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Web server\nusers:\n  testuser: alice\n",
+            "connections:\n  web:\n    host: 1.2.3.4\n    user: ${testuser}\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: Web server\nusers:\n  testuser: alice\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
@@ -342,7 +340,7 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "connections:\n  alpha:\n    host: 10.0.0.1\n    user: deploy\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Alpha\n  beta:\n    host: 10.0.0.2\n    user: admin\n    auth: password\n    description: Beta\nusers:\n  k: v\n",
+            "connections:\n  alpha:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: Alpha\n  beta:\n    host: 10.0.0.2\n    user: admin\n    auth:\n      type: password\n    description: Beta\nusers:\n  k: v\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
@@ -379,7 +377,7 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "connections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Production server\n",
+            "connections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: Production server\n",
         );
 
         let empty = TempDir::new().unwrap();
@@ -394,7 +392,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  srv:\n    host: h\n    user: u\n    auth: key\n    description: d\n",
+            "connections:\n  srv:\n    host: h\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user.path()), empty.path());
@@ -421,7 +419,7 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "connections:\n  srv:\n    host: 1.2.3.4\n    user: admin\n    port: 2222\n    auth: key\n    key: ~/.ssh/id_ed25519\n    description: Test\n    link: https://wiki.example.com\n",
+            "connections:\n  srv:\n    host: 1.2.3.4\n    user: admin\n    port: 2222\n    auth:\n      type: key\n      key: ~/.ssh/id_ed25519\n    description: Test\n    link: https://wiki.example.com\n",
         );
 
         let empty = TempDir::new().unwrap();
@@ -436,7 +434,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  db:\n    host: db.internal\n    user: dbadmin\n    auth: password\n    description: Database\n",
+            "connections:\n  db:\n    host: db.internal\n    user: dbadmin\n    auth:\n      type: password\n    description: Database\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user.path()), empty.path());

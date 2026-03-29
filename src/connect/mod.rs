@@ -14,7 +14,7 @@ use std::ffi::CString;
 
 use anyhow::{Context, Result};
 
-use crate::config::Connection;
+use crate::config::{Auth, Connection};
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -40,11 +40,9 @@ pub fn build_args(conn: &Connection) -> Vec<String> {
     // the sole authority for all SSH connection parameters.
     let mut args = vec!["ssh".to_string(), "-F".to_string(), "/dev/null".to_string()];
 
-    if conn.auth == "key" {
-        if let Some(ref key) = conn.key {
-            args.push("-i".to_string());
-            args.push(key.clone());
-        }
+    if let Auth::Key { ref key, .. } = conn.auth {
+        args.push("-i".to_string());
+        args.push(key.clone());
     }
 
     if conn.port != 22 {
@@ -109,16 +107,28 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    use crate::config::{Connection, Layer};
+    use crate::config::{Auth, Connection, Layer};
 
-    fn make_conn(auth: &str, key: Option<&str>, port: u16, host: &str, user: &str) -> Connection {
+    fn make_conn(
+        auth_type: &str,
+        key: Option<&str>,
+        port: u16,
+        host: &str,
+        user: &str,
+    ) -> Connection {
+        let auth = match auth_type {
+            "key" => Auth::Key {
+                key: key.unwrap_or("~/.ssh/id_rsa").to_string(),
+                cmd: None,
+            },
+            _ => Auth::Password,
+        };
         Connection {
             name: "test".to_string(),
             host: host.to_string(),
             user: user.to_string(),
             port,
-            auth: auth.to_string(),
-            key: key.map(str::to_string),
+            auth,
             description: String::new(),
             link: None,
             group: None,
@@ -320,11 +330,12 @@ mod tests {
     // ── additional edge cases ─────────────────────────────────────────────────
 
     #[test]
-    fn test_key_auth_without_key_field() {
-        // auth=key but no key path — no -i flag emitted
-        let conn = make_conn("key", None, 22, "myhost", "user");
+    fn test_key_auth_always_has_key_flag() {
+        // Auth::Key always includes a key path, so -i is always emitted.
+        let conn = make_conn("key", Some("~/.ssh/id_rsa"), 22, "myhost", "user");
         let args = build_args(&conn);
-        assert_eq!(args, vec!["ssh", "-F", "/dev/null", "user@myhost"]);
+        assert!(args.contains(&"-i".to_string()));
+        assert!(args.contains(&"~/.ssh/id_rsa".to_string()));
     }
 
     #[test]

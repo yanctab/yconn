@@ -31,12 +31,10 @@ pub fn run(
     // Security: validate the key file before trying to connect.
     // Expand a leading `~` so that the existence and permission checks operate
     // on the real path — Path::new("~/.ssh/id_rsa") does not exist literally.
-    if conn.auth == "key" {
-        if let Some(ref key) = conn.key {
-            let expanded = expand_tilde(key);
-            for w in security::check_key_file(&expanded) {
-                renderer.warn(&w.message);
-            }
+    if let Some(key) = conn.auth.key() {
+        let expanded = expand_tilde(key);
+        for w in security::check_key_file(&expanded) {
+            renderer.warn(&w.message);
         }
     }
 
@@ -193,7 +191,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Prod\n",
+            "connections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: Prod\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user.path()), empty.path());
@@ -215,7 +213,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  srv:\n    host: myhost\n    user: admin\n    auth: key\n    key: ~/.ssh/id_ed25519\n    description: Server\n",
+            "connections:\n  srv:\n    host: myhost\n    user: admin\n    auth:\n      type: key\n      key: ~/.ssh/id_ed25519\n    description: Server\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user.path()), empty.path());
@@ -243,7 +241,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  db:\n    host: db.internal\n    user: dbadmin\n    auth: password\n    description: DB\n",
+            "connections:\n  db:\n    host: db.internal\n    user: dbadmin\n    auth:\n      type: password\n    description: DB\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user.path()), empty.path());
@@ -264,7 +262,7 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "docker:\n  image: ghcr.io/org/keys:latest\nconnections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Prod\n",
+            "docker:\n  image: ghcr.io/org/keys:latest\nconnections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: Prod\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
@@ -289,7 +287,7 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "docker:\n  image: ghcr.io/org/keys:latest\nconnections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Prod\n",
+            "docker:\n  image: ghcr.io/org/keys:latest\nconnections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: Prod\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
@@ -307,7 +305,7 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "docker:\n  image: myimage:v1\nconnections:\n  srv:\n    host: h\n    user: u\n    auth: key\n    key: ~/.ssh/k\n    description: d\n",
+            "docker:\n  image: myimage:v1\nconnections:\n  srv:\n    host: h\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/k\n    description: d\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
@@ -327,7 +325,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  srv:\n    host: h\n    user: u\n    auth: password\n    description: d\n",
+            "connections:\n  srv:\n    host: h\n    user: u\n    auth:\n      type: password\n    description: d\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user.path()), empty.path());
@@ -356,7 +354,7 @@ mod tests {
     #[test]
     fn test_print_connecting_key_auth_format() {
         // Use build_args directly — same path as run() uses.
-        use crate::config::{Connection, Layer};
+        use crate::config::{Auth, Connection, Layer};
         use std::path::PathBuf;
 
         let conn = Connection {
@@ -364,8 +362,10 @@ mod tests {
             host: "myhost".to_string(),
             user: "deploy".to_string(),
             port: 22,
-            auth: "key".to_string(),
-            key: Some("~/.ssh/id_rsa".to_string()),
+            auth: Auth::Key {
+                key: "~/.ssh/id_rsa".to_string(),
+                cmd: None,
+            },
             description: String::new(),
             link: None,
             group: None,
@@ -399,7 +399,7 @@ mod tests {
     /// expected single-line format: `[yconn] Connecting: ssh user@host`.
     #[test]
     fn test_print_connecting_password_auth_format() {
-        use crate::config::{Connection, Layer};
+        use crate::config::{Auth, Connection, Layer};
         use std::path::PathBuf;
 
         let conn = Connection {
@@ -407,8 +407,7 @@ mod tests {
             host: "db.internal".to_string(),
             user: "dbadmin".to_string(),
             port: 22,
-            auth: "password".to_string(),
-            key: None,
+            auth: Auth::Password,
             description: String::new(),
             link: None,
             group: None,
@@ -536,7 +535,7 @@ mod tests {
         let cwd = TempDir::new().unwrap();
         let user_dir = TempDir::new().unwrap();
         let yaml = format!(
-            "connections:\n  srv:\n    host: myhost\n    user: {user}\n    auth: password\n    description: d\n"
+            "connections:\n  srv:\n    host: myhost\n    user: {user}\n    auth:\n      type: password\n    description: d\n"
         );
         write_yaml(user_dir.path(), "connections.yaml", &yaml);
         let empty = TempDir::new().unwrap();
@@ -547,7 +546,7 @@ mod tests {
         let cwd = TempDir::new().unwrap();
         let user_dir = TempDir::new().unwrap();
         let yaml = format!(
-            "{users_yaml}connections:\n  srv:\n    host: myhost\n    user: {user}\n    auth: password\n    description: d\n"
+            "{users_yaml}connections:\n  srv:\n    host: myhost\n    user: {user}\n    auth:\n      type: password\n    description: d\n"
         );
         write_yaml(user_dir.path(), "connections.yaml", &yaml);
         let empty = TempDir::new().unwrap();
