@@ -94,11 +94,11 @@ pub(crate) fn run_impl(
             .parse()
             .with_context(|| format!("invalid port '{port_raw}'"))?
     };
-    let auth = prompt_choice(output, input, "Auth", &["key", "password"])?;
+    let auth = prompt_choice(output, input, "Auth", &["key", "password", "identity"])?;
     if auth.is_empty() {
         bail!("aborted");
     }
-    let key = if auth == "key" {
+    let key = if auth == "key" || auth == "identity" {
         let k = prompt(output, input, "Key path (e.g. ~/.ssh/id_rsa)")?;
         if k.is_empty() {
             bail!("aborted");
@@ -377,6 +377,33 @@ mod tests {
         let content = fs::read_to_string(dir.path().join("connections.yaml")).unwrap();
         assert!(content.contains("type: password"));
         assert!(!content.contains("key:"));
+    }
+
+    #[test]
+    fn test_add_identity_auth_creates_correct_yaml() {
+        let dir = TempDir::new().unwrap();
+        // identity auth: name, host, user, port, auth, key, description, link
+        let answers = [
+            "github",
+            "github.com",
+            "git",
+            "",
+            "identity",
+            "~/.ssh/github_key",
+            "GitHub identity",
+            "",
+        ];
+        run_with_input(Layer::User, dir.path(), &answers).unwrap();
+
+        let target = dir.path().join("connections.yaml");
+        assert!(target.exists());
+        let content = fs::read_to_string(&target).unwrap();
+        assert!(content.contains("github:"));
+        assert!(content.contains("host: github.com"));
+        assert!(content.contains("user: git"));
+        assert!(content.contains("type: identity"));
+        assert!(content.contains("key: ~/.ssh/github_key"));
+        assert!(content.contains("description:"));
     }
 
     #[test]

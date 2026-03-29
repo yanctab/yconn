@@ -86,6 +86,14 @@ pub enum Auth {
     /// Password authentication — SSH prompts natively.
     #[serde(rename = "password")]
     Password,
+    /// Identity-only authentication for ssh-config entries (e.g. git hosts).
+    /// Produces `IdentityFile` + `IdentitiesOnly yes` in SSH config output.
+    #[serde(rename = "identity")]
+    Identity {
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cmd: Option<String>,
+    },
 }
 
 impl Auth {
@@ -94,13 +102,14 @@ impl Auth {
         match self {
             Auth::Key { .. } => "key",
             Auth::Password => "password",
+            Auth::Identity { .. } => "identity",
         }
     }
 
     /// Return the key path, if any.
     pub fn key(&self) -> Option<&str> {
         match self {
-            Auth::Key { ref key, .. } => Some(key.as_str()),
+            Auth::Key { ref key, .. } | Auth::Identity { ref key, .. } => Some(key.as_str()),
             Auth::Password => None,
         }
     }
@@ -108,7 +117,7 @@ impl Auth {
     /// Return the cmd field, if any.
     pub fn cmd(&self) -> Option<&str> {
         match self {
-            Auth::Key { ref cmd, .. } => cmd.as_deref(),
+            Auth::Key { ref cmd, .. } | Auth::Identity { ref cmd, .. } => cmd.as_deref(),
             Auth::Password => None,
         }
     }
@@ -2096,5 +2105,42 @@ mod tests {
 
         let conn = cfg.find_with_wildcard("server5").unwrap();
         assert_eq!(conn.host, "server5.corp.com");
+    }
+
+    // ── identity auth type ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_identity_connection_parsed_correctly() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  github:\n    host: github.com\n    user: git\n    auth:\n      type: identity\n      key: ~/.ssh/github_key\n    description: GitHub identity\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
+        assert_eq!(cfg.connections.len(), 1);
+        let conn = &cfg.connections[0];
+        assert_eq!(conn.name, "github");
+        assert_eq!(conn.auth.type_label(), "identity");
+        assert_eq!(conn.auth.key(), Some("~/.ssh/github_key"));
+    }
+
+    #[test]
+    fn test_identity_without_key_rejected() {
+        let cwd = TempDir::new().unwrap();
+        let user = TempDir::new().unwrap();
+        write_yaml(
+            user.path(),
+            "connections.yaml",
+            "connections:\n  github:\n    host: github.com\n    user: git\n    auth:\n      type: identity\n    description: GitHub identity\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let result = load_impl(cwd.path(), None, false, Some(user.path()), empty.path());
+        assert!(
+            result.is_err(),
+            "identity auth without key should be rejected"
+        );
     }
 }

@@ -40,9 +40,12 @@ pub fn build_args(conn: &Connection) -> Vec<String> {
     // the sole authority for all SSH connection parameters.
     let mut args = vec!["ssh".to_string(), "-F".to_string(), "/dev/null".to_string()];
 
-    if let Auth::Key { ref key, .. } = conn.auth {
-        args.push("-i".to_string());
-        args.push(key.clone());
+    match conn.auth {
+        Auth::Key { ref key, .. } | Auth::Identity { ref key, .. } => {
+            args.push("-i".to_string());
+            args.push(key.clone());
+        }
+        Auth::Password => {}
     }
 
     if conn.port != 22 {
@@ -121,6 +124,10 @@ mod tests {
                 key: key.unwrap_or("~/.ssh/id_rsa").to_string(),
                 cmd: None,
             },
+            "identity" => Auth::Identity {
+                key: key.unwrap_or("~/.ssh/id_rsa").to_string(),
+                cmd: None,
+            },
             _ => Auth::Password,
         };
         Connection {
@@ -191,6 +198,53 @@ mod tests {
             args,
             vec!["ssh", "-F", "/dev/null", "-p", "2222", "deploy@myhost"]
         );
+    }
+
+    // ── identity auth scenarios ────────────────────────────────────────────────
+
+    #[test]
+    fn test_identity_auth_default_port() {
+        let conn = make_conn("identity", Some("~/.ssh/id_rsa"), 22, "github.com", "git");
+        let args = build_args(&conn);
+        assert_eq!(
+            args,
+            vec![
+                "ssh",
+                "-F",
+                "/dev/null",
+                "-i",
+                "~/.ssh/id_rsa",
+                "git@github.com"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_identity_auth_custom_port() {
+        let conn = make_conn("identity", Some("~/.ssh/id_rsa"), 2222, "github.com", "git");
+        let args = build_args(&conn);
+        assert_eq!(
+            args,
+            vec![
+                "ssh",
+                "-F",
+                "/dev/null",
+                "-i",
+                "~/.ssh/id_rsa",
+                "-p",
+                "2222",
+                "git@github.com"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_identity_auth_warning_text() {
+        // Verify the warning message content matches expectations.
+        let warning = "this connection is configured as identity-only (e.g. for git hosts) \
+                       and may not support interactive SSH sessions";
+        assert!(warning.contains("identity-only"));
+        assert!(warning.contains("git hosts"));
     }
 
     #[test]
