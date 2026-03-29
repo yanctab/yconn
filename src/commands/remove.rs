@@ -249,7 +249,7 @@ mod tests {
 
     #[test]
     fn test_remove_entry_single_connection() {
-        let content = "version: 1\n\nconnections:\n  srv:\n    host: h\n    user: u\n    auth: key\n    description: d\n";
+        let content = "version: 1\n\nconnections:\n  srv:\n    host: h\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n";
         let result = remove_entry(content, "srv").unwrap();
         assert!(!result.contains("srv:"));
         assert!(result.contains("connections:"));
@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn test_remove_entry_leaves_other_connections() {
-        let content = "connections:\n  alpha:\n    host: a\n    user: u\n    auth: key\n    description: d\n  beta:\n    host: b\n    user: u\n    auth: key\n    description: d\n";
+        let content = "connections:\n  alpha:\n    host: a\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n  beta:\n    host: b\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n";
         let result = remove_entry(content, "alpha").unwrap();
         assert!(!result.contains("alpha:"));
         assert!(result.contains("beta:"));
@@ -279,7 +279,7 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "version: 1\n\nconnections:\n  srv:\n    host: h\n    user: u\n    auth: key\n    description: d\n",
+            "version: 1\n\nconnections:\n  srv:\n    host: h\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n",
         );
         let sys = TempDir::new().unwrap();
         let cfg = load(dir.path(), None, sys.path());
@@ -314,14 +314,14 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "connections:\n  srv:\n    host: proj\n    user: u\n    auth: key\n    description: d\n",
+            "connections:\n  srv:\n    host: proj\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n",
         );
 
         let sys = TempDir::new().unwrap();
         write_yaml(
             sys.path(),
             "connections.yaml",
-            "connections:\n  srv:\n    host: sys\n    user: u\n    auth: key\n    description: d\n",
+            "connections:\n  srv:\n    host: sys\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n",
         );
 
         let cfg = load(root.path(), None, sys.path());
@@ -363,14 +363,14 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "connections:\n  srv:\n    host: proj\n    user: u\n    auth: key\n    description: d\n",
+            "connections:\n  srv:\n    host: proj\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n",
         );
 
         let sys = TempDir::new().unwrap();
         write_yaml(
             sys.path(),
             "connections.yaml",
-            "connections:\n  srv:\n    host: sys\n    user: u\n    auth: key\n    description: d\n",
+            "connections:\n  srv:\n    host: sys\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n",
         );
 
         let cfg = load(root.path(), None, sys.path());
@@ -394,13 +394,13 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "connections:\n  srv:\n    host: proj\n    user: u\n    auth: key\n    description: d\n",
+            "connections:\n  srv:\n    host: proj\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n",
         );
         let sys = TempDir::new().unwrap();
         write_yaml(
             sys.path(),
             "connections.yaml",
-            "connections:\n  srv:\n    host: sys\n    user: u\n    auth: key\n    description: d\n",
+            "connections:\n  srv:\n    host: sys\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n",
         );
         let cfg = load(root.path(), None, sys.path());
 

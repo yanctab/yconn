@@ -69,7 +69,7 @@ pub fn render_ssh_config(connections: &[Connection], skip_user: bool) -> String 
 
         // All comment lines appear contiguously before the Host line.
         out.push_str(&format!("# description: {}\n", conn.description));
-        out.push_str(&format!("# auth: {}\n", conn.auth));
+        out.push_str(&format!("# auth: {}\n", conn.auth.type_label()));
         if let Some(link) = &conn.link {
             out.push_str(&format!("# link: {link}\n"));
         }
@@ -88,7 +88,7 @@ pub fn render_ssh_config(connections: &[Connection], skip_user: bool) -> String 
         if conn.port != 22 {
             out.push_str(&format!("    Port {}\n", conn.port));
         }
-        if let Some(key) = &conn.key {
+        if let Some(key) = conn.auth.key() {
             out.push_str(&format!("    IdentityFile {key}\n"));
         }
         out.push('\n');
@@ -628,7 +628,7 @@ pub fn run_enable(home: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Connection, Layer};
+    use crate::config::{Auth, Connection, Layer};
     use std::path::PathBuf;
 
     fn make_conn(
@@ -636,16 +636,22 @@ mod tests {
         host: &str,
         user: &str,
         port: u16,
-        auth: &str,
+        auth_type: &str,
         key: Option<&str>,
     ) -> Connection {
+        let auth = match auth_type {
+            "key" => Auth::Key {
+                key: key.unwrap_or("~/.ssh/id_rsa").to_string(),
+                cmd: None,
+            },
+            _ => Auth::Password,
+        };
         Connection {
             name: name.to_string(),
             host: host.to_string(),
             user: user.to_string(),
             port,
-            auth: auth.to_string(),
-            key: key.map(|s| s.to_string()),
+            auth,
             description: format!("{name} description"),
             link: None,
             group: None,
@@ -930,7 +936,7 @@ mod tests {
     #[test]
     fn test_dollar_user_expanded_from_override() {
         // Use --user user:alice override (deterministic, no dependency on $USER env var).
-        let yaml = "connections:\n  srv:\n    host: myhost\n    user: \"${user}\"\n    auth: password\n    description: test\n";
+        let yaml = "connections:\n  srv:\n    host: myhost\n    user: \"${user}\"\n    auth:\n      type: password\n    description: test\n";
         let mut overrides = HashMap::new();
         overrides.insert("user".to_string(), "alice".to_string());
         let (out, _warnings) = render_expanded(yaml, &overrides, false);
@@ -960,7 +966,7 @@ mod tests {
 
     #[test]
     fn test_named_key_expanded_from_users_map() {
-        let yaml = "users:\n  testuser: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${testuser}\"\n    auth: password\n    description: test\n";
+        let yaml = "users:\n  testuser: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${testuser}\"\n    auth:\n      type: password\n    description: test\n";
         let (out, warnings) = render_expanded(yaml, &HashMap::new(), false);
         assert!(
             out.contains("    User ops\n"),
@@ -981,7 +987,7 @@ mod tests {
 
     #[test]
     fn test_user_override_overrides_users_map() {
-        let yaml = "users:\n  testuser: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${testuser}\"\n    auth: password\n    description: test\n";
+        let yaml = "users:\n  testuser: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${testuser}\"\n    auth:\n      type: password\n    description: test\n";
         let mut overrides = HashMap::new();
         overrides.insert("testuser".to_string(), "alice".to_string());
         let (out, warnings) = render_expanded(yaml, &overrides, false);
@@ -994,7 +1000,7 @@ mod tests {
 
     #[test]
     fn test_multiple_user_overrides_all_applied() {
-        let yaml = "users:\n  k1: \"a\"\nconnections:\n  c1:\n    host: h1\n    user: \"${k1}\"\n    auth: password\n    description: d1\n  c2:\n    host: h2\n    user: \"${user}\"\n    auth: password\n    description: d2\n";
+        let yaml = "users:\n  k1: \"a\"\nconnections:\n  c1:\n    host: h1\n    user: \"${k1}\"\n    auth:\n      type: password\n    description: d1\n  c2:\n    host: h2\n    user: \"${user}\"\n    auth:\n      type: password\n    description: d2\n";
         let mut overrides = HashMap::new();
         overrides.insert("k1".to_string(), "carol".to_string());
         overrides.insert("user".to_string(), "dave".to_string());
@@ -1008,7 +1014,7 @@ mod tests {
 
     #[test]
     fn test_unresolved_template_produces_warning() {
-        let yaml = "connections:\n  srv:\n    host: myhost\n    user: \"${nokey}\"\n    auth: password\n    description: test\n";
+        let yaml = "connections:\n  srv:\n    host: myhost\n    user: \"${nokey}\"\n    auth:\n      type: password\n    description: test\n";
         let (_out, warnings) = render_expanded(yaml, &HashMap::new(), false);
         assert!(
             !warnings.is_empty(),
@@ -1274,7 +1280,7 @@ mod tests {
     /// the resolved value.
     #[test]
     fn test_run_install_impl_unresolved_key_prompts_and_resolves() {
-        let yaml = "connections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth: password\n    description: test\n";
+        let yaml = "connections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: test\n";
         let (cfg, _user_dir) = load_cfg(yaml);
 
         let home = tempfile::TempDir::new().unwrap();
@@ -1326,7 +1332,7 @@ mod tests {
     /// `run_install_impl` with all keys already resolved produces no prompts.
     #[test]
     fn test_run_install_impl_resolved_keys_no_prompt() {
-        let yaml = "users:\n  t1user: \"bob\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth: password\n    description: test\n";
+        let yaml = "users:\n  t1user: \"bob\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: test\n";
         let (cfg, _user_dir) = load_cfg(yaml);
 
         let home = tempfile::TempDir::new().unwrap();

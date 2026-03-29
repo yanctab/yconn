@@ -96,7 +96,7 @@ mod tests {
 
     fn simple_conn(name: &str, host: &str) -> String {
         format!(
-            "connections:\n  {name}:\n    host: {host}\n    user: u\n    auth: key\n    description: d\n"
+            "connections:\n  {name}:\n    host: {host}\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n"
         )
     }
 

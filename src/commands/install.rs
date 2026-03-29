@@ -453,7 +453,7 @@ mod tests {
         let mut s = String::from("version: 1\n\nconnections:\n");
         for (name, host, user) in connections {
             s.push_str(&format!(
-                "  {name}:\n    host: {host}\n    user: {user}\n    auth: password\n    description: \"test\"\n"
+                "  {name}:\n    host: {host}\n    user: {user}\n    auth:\n      type: password\n    description: \"test\"\n"
             ));
         }
         s
@@ -519,7 +519,7 @@ mod tests {
         // Pre-populate target with alpha using a different host.
         fs::write(
             &target_file,
-            "version: 1\n\nconnections:\n  alpha:\n    host: old-host\n    user: old-user\n    auth: password\n    description: \"old\"\n",
+            "version: 1\n\nconnections:\n  alpha:\n    host: old-host\n    user: old-user\n    auth:\n      type: password\n    description: \"old\"\n",
         )
         .unwrap();
 
@@ -559,7 +559,7 @@ mod tests {
 
         fs::write(
             &target_file,
-            "version: 1\n\nconnections:\n  alpha:\n    host: old-host\n    user: old-user\n    auth: password\n    description: \"old\"\n",
+            "version: 1\n\nconnections:\n  alpha:\n    host: old-host\n    user: old-user\n    auth:\n      type: password\n    description: \"old\"\n",
         )
         .unwrap();
 
@@ -636,8 +636,9 @@ mod tests {
 
     #[test]
     fn test_replace_connection_updates_body() {
-        let content = "version: 1\n\nconnections:\n  alpha:\n    host: old\n    user: u\n    auth: password\n    description: \"d\"\n  beta:\n    host: bh\n    user: bu\n    auth: password\n    description: \"d2\"\n";
-        let new_entry = "    host: new\n    user: u\n    auth: password\n    description: \"d\"\n";
+        let content = "version: 1\n\nconnections:\n  alpha:\n    host: old\n    user: u\n    auth:\n      type: password\n    description: \"d\"\n  beta:\n    host: bh\n    user: bu\n    auth:\n      type: password\n    description: \"d2\"\n";
+        let new_entry =
+            "    host: new\n    user: u\n    auth:\n      type: password\n    description: \"d\"\n";
         let result = replace_connection(content, "alpha", new_entry);
         assert!(result.contains("host: new"), "new host not found");
         assert!(!result.contains("host: old"), "old host still present");
@@ -655,7 +656,7 @@ mod tests {
         // Project config with a ${t1user} template in the user field.
         fs::write(
             &project_file,
-            "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth: password\n    description: \"test\"\n",
+            "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: \"test\"\n",
         ).unwrap();
 
         // Provide the prompted value followed by newline (no further stdin needed
@@ -698,7 +699,7 @@ mod tests {
         // Project config with a ${t1user} template.
         fs::write(
             &project_file,
-            "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth: password\n    description: \"test\"\n",
+            "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: \"test\"\n",
         ).unwrap();
 
         // Pre-populate target with the t1user entry already resolved.
@@ -724,7 +725,7 @@ mod tests {
         // Two connections referencing the same ${t1user} key.
         fs::write(
             &project_file,
-            "version: 1\n\nconnections:\n  conn-a:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth: password\n    description: \"a\"\n  conn-b:\n    host: 10.0.0.2\n    user: \"${t1user}\"\n    auth: password\n    description: \"b\"\n",
+            "version: 1\n\nconnections:\n  conn-a:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: \"a\"\n  conn-b:\n    host: 10.0.0.2\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: \"b\"\n",
         ).unwrap();
 
         // Provide a single value — should only be prompted once.

@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::security;
 
@@ -56,9 +56,7 @@ struct RawConn {
     #[serde(default = "default_port")]
     port: u16,
     #[serde(default)]
-    auth: Option<String>,
-    #[serde(default)]
-    key: Option<String>,
+    auth: Option<Auth>,
     #[serde(default)]
     description: Option<String>,
     #[serde(default)]
@@ -67,6 +65,53 @@ struct RawConn {
     /// to no group and are always shown unless a group filter is active.
     #[serde(default)]
     group: Option<String>,
+}
+
+// ─── Auth enum ───────────────────────────────────────────────────────────────
+
+/// Structured authentication configuration for a connection.
+///
+/// Serialised as an internally-tagged YAML mapping: `{ type: key, key: ... }`.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[serde(tag = "type")]
+pub enum Auth {
+    /// Key-based authentication. `key` is the path to the private key file.
+    /// `cmd` is an optional shell command (parsed and stored only — not executed).
+    #[serde(rename = "key")]
+    Key {
+        key: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cmd: Option<String>,
+    },
+    /// Password authentication — SSH prompts natively.
+    #[serde(rename = "password")]
+    Password,
+}
+
+impl Auth {
+    /// Return a human-readable label for the auth type.
+    pub fn type_label(&self) -> &str {
+        match self {
+            Auth::Key { .. } => "key",
+            Auth::Password => "password",
+        }
+    }
+
+    /// Return the key path, if any.
+    pub fn key(&self) -> Option<&str> {
+        match self {
+            Auth::Key { ref key, .. } => Some(key.as_str()),
+            Auth::Password => None,
+        }
+    }
+
+    /// Return the cmd field, if any.
+    pub fn cmd(&self) -> Option<&str> {
+        match self {
+            Auth::Key { ref cmd, .. } => cmd.as_deref(),
+            Auth::Password => None,
+        }
+    }
 }
 
 fn default_port() -> u16 {
@@ -100,8 +145,7 @@ pub struct Connection {
     pub host: String,
     pub user: String,
     pub port: u16,
-    pub auth: String,
-    pub key: Option<String>,
+    pub auth: Auth,
     pub description: String,
     pub link: Option<String>,
     /// Optional inline group tag from the YAML `group:` field.
@@ -646,6 +690,12 @@ fn validate_connections(path: &Path, connections: &HashMap<String, RawConn>) -> 
     Ok(())
 }
 
+/// Default auth value used when auth is None (should not happen after
+/// validation, but provides a safe fallback).
+fn default_auth() -> Auth {
+    Auth::Password
+}
+
 struct LayerData {
     found: bool,
     count: usize,
@@ -824,8 +874,7 @@ fn build_connection(
         host: raw.host.clone().unwrap_or_default(),
         user: raw.user.clone().unwrap_or_default(),
         port: raw.port,
-        auth: raw.auth.clone().unwrap_or_default(),
-        key: raw.key.clone(),
+        auth: raw.auth.clone().unwrap_or_else(default_auth),
         description: raw.description.clone().unwrap_or_default(),
         link: raw.link.clone(),
         group: raw.group.clone(),
@@ -912,13 +961,13 @@ mod tests {
 
     fn simple_conn(name: &str, host: &str) -> String {
         format!(
-            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth: key\n    description: desc\n"
+            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n"
         )
     }
 
     fn conn_with_group(name: &str, host: &str, group: &str) -> String {
         format!(
-            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth: key\n    description: desc\n    group: {group}\n"
+            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n    group: {group}\n"
         )
     }
 
@@ -1336,7 +1385,7 @@ mod tests {
             &format!(
                 "{}\n{}",
                 simple_conn("alpha", "1.0.0.1"),
-                "  beta:\n    host: 2.0.0.2\n    user: u\n    auth: key\n    description: d\n"
+                "  beta:\n    host: 2.0.0.2\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n"
             ),
         );
 
@@ -1491,7 +1540,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  a:\n    host: h\n    user: u\n    auth: key\n    description: d\n  b:\n    host: h2\n    user: u2\n    auth: key\n    description: d2\n",
+            "connections:\n  a:\n    host: h\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n  b:\n    host: h2\n    user: u2\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d2\n",
         );
         let empty = TempDir::new().unwrap();
 
@@ -1545,7 +1594,7 @@ mod tests {
             "{}\n{}",
             conn_with_group("work-srv", "10.0.0.1", "work"),
             // Simple conn in same connections block — just append raw
-            "  plain-srv:\n    host: 10.0.0.2\n    user: user\n    auth: key\n    description: desc\n"
+            "  plain-srv:\n    host: 10.0.0.2\n    user: user\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n"
         );
         write_yaml(user.path(), "connections.yaml", &yaml);
         let empty = TempDir::new().unwrap();
@@ -1563,7 +1612,7 @@ mod tests {
         let yaml = format!(
             "{}\n{}",
             conn_with_group("work-srv", "10.0.0.1", "work"),
-            "  plain-srv:\n    host: 10.0.0.2\n    user: user\n    auth: key\n    description: desc\n"
+            "  plain-srv:\n    host: 10.0.0.2\n    user: user\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n"
         );
         write_yaml(user.path(), "connections.yaml", &yaml);
         let empty = TempDir::new().unwrap();
@@ -1632,7 +1681,7 @@ mod tests {
         let yaml = format!(
             "{}\n{}",
             conn_with_group("work-srv", "10.0.0.1", "work"),
-            "  private-srv:\n    host: 10.0.0.2\n    user: user\n    auth: key\n    description: desc\n    group: private\n"
+            "  private-srv:\n    host: 10.0.0.2\n    user: user\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n    group: private\n"
         );
         write_yaml(user.path(), "connections.yaml", &yaml);
         let empty = TempDir::new().unwrap();
@@ -1652,7 +1701,7 @@ mod tests {
         let yaml = format!(
             "{}\n{}",
             conn_with_group("z-srv", "10.0.0.1", "zebra"),
-            "  a-srv:\n    host: 10.0.0.2\n    user: user\n    auth: key\n    description: desc\n    group: alpha\n"
+            "  a-srv:\n    host: 10.0.0.2\n    user: user\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n    group: alpha\n"
         );
         write_yaml(user.path(), "connections.yaml", &yaml);
         let empty = TempDir::new().unwrap();
@@ -1704,7 +1753,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  web-*:\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Wildcard web\n",
+            "connections:\n  web-*:\n    host: placeholder\n    user: deploy\n    auth:\n      type: password\n    description: Wildcard web\n",
         );
         let empty = TempDir::new().unwrap();
 
@@ -1725,7 +1774,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  web-*:\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Wildcard web\n",
+            "connections:\n  web-*:\n    host: placeholder\n    user: deploy\n    auth:\n      type: password\n    description: Wildcard web\n",
         );
         let empty = TempDir::new().unwrap();
 
@@ -1747,7 +1796,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  web-*:\n    host: ph1\n    user: deploy\n    auth: password\n    description: Web wildcard\n  \"?eb-prod\":\n    host: ph2\n    user: admin\n    auth: password\n    description: Prefix wildcard\n",
+            "connections:\n  web-*:\n    host: ph1\n    user: deploy\n    auth:\n      type: password\n    description: Web wildcard\n  \"?eb-prod\":\n    host: ph2\n    user: admin\n    auth:\n      type: password\n    description: Prefix wildcard\n",
         );
         let empty = TempDir::new().unwrap();
 
@@ -1773,7 +1822,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  web-prod:\n    host: exact-host\n    user: exact-user\n    auth: password\n    description: Exact match\n  web-*:\n    host: wildcard-host\n    user: wildcard-user\n    auth: password\n    description: Wildcard\n",
+            "connections:\n  web-prod:\n    host: exact-host\n    user: exact-user\n    auth:\n      type: password\n    description: Exact match\n  web-*:\n    host: wildcard-host\n    user: wildcard-user\n    auth:\n      type: password\n    description: Wildcard\n",
         );
         let empty = TempDir::new().unwrap();
 
@@ -1797,7 +1846,7 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "connections:\n  host-*:\n    host: proj-host\n    user: project-user\n    auth: password\n    description: Project wildcard\n",
+            "connections:\n  host-*:\n    host: proj-host\n    user: project-user\n    auth:\n      type: password\n    description: Project wildcard\n",
         );
 
         let user = TempDir::new().unwrap();
@@ -1805,7 +1854,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  host-*:\n    host: user-host\n    user: user-user\n    auth: password\n    description: User wildcard\n",
+            "connections:\n  host-*:\n    host: user-host\n    user: user-user\n    auth:\n      type: password\n    description: User wildcard\n",
         );
         let empty = TempDir::new().unwrap();
 
@@ -1825,7 +1874,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  web-?:\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Single char wildcard\n",
+            "connections:\n  web-?:\n    host: placeholder\n    user: deploy\n    auth:\n      type: password\n    description: Single char wildcard\n",
         );
         let empty = TempDir::new().unwrap();
 
@@ -1847,7 +1896,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  server*:\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth: password\n    description: Corp servers\n",
+            "connections:\n  server*:\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth:\n      type: password\n    description: Corp servers\n",
         );
         let empty = TempDir::new().unwrap();
 
@@ -1866,7 +1915,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  web-*:\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Web servers\n",
+            "connections:\n  web-*:\n    host: placeholder\n    user: deploy\n    auth:\n      type: password\n    description: Web servers\n",
         );
         let empty = TempDir::new().unwrap();
 
@@ -1885,7 +1934,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  myconn:\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth: password\n    description: My connection\n",
+            "connections:\n  myconn:\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth:\n      type: password\n    description: My connection\n",
         );
         let empty = TempDir::new().unwrap();
 
@@ -1905,7 +1954,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  \"server[1..10]\":\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Range servers\n",
+            "connections:\n  \"server[1..10]\":\n    host: placeholder\n    user: deploy\n    auth:\n      type: password\n    description: Range servers\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
@@ -1922,7 +1971,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  \"server[1..10]\":\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Range servers\n",
+            "connections:\n  \"server[1..10]\":\n    host: placeholder\n    user: deploy\n    auth:\n      type: password\n    description: Range servers\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
@@ -1939,7 +1988,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  \"server[1..10]\":\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Range servers\n",
+            "connections:\n  \"server[1..10]\":\n    host: placeholder\n    user: deploy\n    auth:\n      type: password\n    description: Range servers\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
@@ -1956,7 +2005,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  \"server[1..10]\":\n    host: placeholder\n    user: deploy\n    auth: password\n    description: Range servers\n",
+            "connections:\n  \"server[1..10]\":\n    host: placeholder\n    user: deploy\n    auth:\n      type: password\n    description: Range servers\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
@@ -1975,7 +2024,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  \"server[1..10]\":\n    host: ph1\n    user: deploy\n    auth: password\n    description: Range\n  server*:\n    host: ph2\n    user: admin\n    auth: password\n    description: Glob\n",
+            "connections:\n  \"server[1..10]\":\n    host: ph1\n    user: deploy\n    auth:\n      type: password\n    description: Range\n  server*:\n    host: ph2\n    user: admin\n    auth:\n      type: password\n    description: Glob\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
@@ -1997,7 +2046,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  server5:\n    host: exact-host\n    user: exact-user\n    auth: password\n    description: Exact\n  \"server[1..10]\":\n    host: range-host\n    user: range-user\n    auth: password\n    description: Range\n",
+            "connections:\n  server5:\n    host: exact-host\n    user: exact-user\n    auth:\n      type: password\n    description: Exact\n  \"server[1..10]\":\n    host: range-host\n    user: range-user\n    auth:\n      type: password\n    description: Range\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load_test(cwd.path(), Some(user.path()), empty.path());
@@ -2016,13 +2065,13 @@ mod tests {
         write_yaml(
             &yconn,
             "connections.yaml",
-            "connections:\n  \"server[1..10]\":\n    host: proj-host\n    user: project-user\n    auth: password\n    description: Project range\n",
+            "connections:\n  \"server[1..10]\":\n    host: proj-host\n    user: project-user\n    auth:\n      type: password\n    description: Project range\n",
         );
         let user = TempDir::new().unwrap();
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  \"server[1..10]\":\n    host: user-host\n    user: user-user\n    auth: password\n    description: User range\n",
+            "connections:\n  \"server[1..10]\":\n    host: user-host\n    user: user-user\n    auth:\n      type: password\n    description: User range\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load_test(root.path(), Some(user.path()), empty.path());
@@ -2040,7 +2089,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  \"server[1..10]\":\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth: password\n    description: Corp servers\n",
+            "connections:\n  \"server[1..10]\":\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth:\n      type: password\n    description: Corp servers\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load_test(cwd.path(), Some(user.path()), empty.path());

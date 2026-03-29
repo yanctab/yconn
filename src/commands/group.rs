@@ -131,13 +131,13 @@ mod tests {
 
     fn simple_conn(name: &str, host: &str) -> String {
         format!(
-            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth: key\n    description: desc\n"
+            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n"
         )
     }
 
     fn conn_with_group(name: &str, host: &str, group: &str) -> String {
         format!(
-            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth: key\n    description: desc\n    group: {group}\n"
+            "connections:\n  {name}:\n    host: {host}\n    user: user\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: desc\n    group: {group}\n"
         )
     }
 
@@ -228,7 +228,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "connections:\n  srv:\n    host: h\n    user: u\n    auth: key\n    description: d\n",
+            "connections:\n  srv:\n    host: h\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user.path()), empty.path());

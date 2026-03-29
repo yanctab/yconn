@@ -114,15 +114,18 @@ connections:
     host: 10.0.1.50
     user: deploy
     port: 22                          # optional, defaults to 22
-    auth: key                         # "key" or "password"
-    key: ~/.ssh/prod_deploy_key       # required when auth is "key"; inside docker, path is inside container
+    auth:
+      type: key                       # "key" or "password"
+      key: ~/.ssh/prod_deploy_key     # required when type is "key"; inside docker, path is inside container
+      cmd: "vault read ssh/key"       # optional shell command (parsed and stored only)
     description: "Primary production web server"
     link: https://wiki.internal/servers/prod-web   # optional
 
   staging-db:
     host: staging.internal
     user: dbadmin
-    auth: password                    # SSH will prompt at runtime; password never stored
+    auth:
+      type: password                  # SSH will prompt at runtime; password never stored
     description: "Staging database server — use with caution"
     link: https://wiki.internal/servers/staging-db
 
@@ -130,8 +133,9 @@ connections:
     host: bastion.example.com
     user: ec2-user
     port: 2222
-    auth: key
-    key: ~/.ssh/bastion_key
+    auth:
+      type: key
+      key: ~/.ssh/bastion_key
     description: "Bastion host — jump point for internal network"
 ```
 
@@ -162,8 +166,10 @@ execution to an arbitrary Docker image.
 | `host` | yes | Hostname or IP address |
 | `user` | yes | SSH login user |
 | `port` | no | SSH port, defaults to 22 |
-| `auth` | yes | `key` or `password` |
-| `key` | if auth=key | Path to private key file (resolved inside container when using Docker) |
+| `auth` | yes | YAML mapping with `type` (required), `key` (required when type=key), and `cmd` (optional) |
+| `auth.type` | yes | `key` or `password` |
+| `auth.key` | if type=key | Path to private key file (resolved inside container when using Docker) |
+| `auth.cmd` | no | Shell command string (parsed and stored only — not executed in v1) |
 | `description` | yes | Human-readable description of the connection |
 | `link` | no | URL for further documentation (wiki, runbook, etc.) |
 
@@ -389,7 +395,7 @@ active group resolution to the `group` module to determine which filename to loa
 which groups have config files, used by `yconn group list`.
 
 **connect** — Takes a resolved connection entry and builds the SSH invocation arguments. Executes
-SSH by replacing the current process so terminal behavior works correctly. For `auth: password`,
+SSH by replacing the current process so terminal behavior works correctly. For `Auth::Password`,
 the native SSH password prompt is used — no password is ever passed programmatically. Key
 passphrases are handled entirely by the user's `ssh-agent`.
 
@@ -442,10 +448,10 @@ argument construction is exercised.
 
 | Scenario | Config | Expected SSH args |
 |---|---|---|
-| Key auth, default port | `auth: key`, `key: ~/.ssh/id_rsa` | `ssh -i ~/.ssh/id_rsa user@host` |
-| Key auth, custom port | `auth: key`, `port: 2222` | `ssh -i ~/.ssh/id_rsa -p 2222 user@host` |
-| Password auth | `auth: password` | `ssh user@host` (no `-i`, no password arg) |
-| Password auth, custom port | `auth: password`, `port: 2222` | `ssh -p 2222 user@host` |
+| Key auth, default port | `auth: { type: key, key: ~/.ssh/id_rsa }` | `ssh -i ~/.ssh/id_rsa user@host` |
+| Key auth, custom port | `auth: { type: key, key: ~/.ssh/id_rsa }`, `port: 2222` | `ssh -i ~/.ssh/id_rsa -p 2222 user@host` |
+| Password auth | `auth: { type: password }` | `ssh user@host` (no `-i`, no password arg) |
+| Password auth, custom port | `auth: { type: password }`, `port: 2222` | `ssh -p 2222 user@host` |
 
 **Group scenarios:**
 

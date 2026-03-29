@@ -511,7 +511,7 @@ mod tests {
         write_yaml(
             user.path(),
             "connections.yaml",
-            "version: 1\n\nusers:\n  mykey: \"val\"\nconnections:\n  srv:\n    host: h\n    user: u\n    auth: key\n    description: d\n",
+            "version: 1\n\nusers:\n  mykey: \"val\"\nconnections:\n  srv:\n    host: h\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: d\n",
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user.path()), empty.path());

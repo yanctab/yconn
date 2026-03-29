@@ -182,9 +182,11 @@ pub(crate) fn build_entry(
     if port != 22 {
         s.push_str(&format!("    port: {}\n", port));
     }
-    s.push_str(&format!("    auth: {}\n", auth));
+    // Emit nested auth block.
+    s.push_str("    auth:\n");
+    s.push_str(&format!("      type: {}\n", auth));
     if let Some(k) = key {
-        s.push_str(&format!("    key: {}\n", k));
+        s.push_str(&format!("      key: {}\n", k));
     }
     s.push_str(&format!(
         "    description: \"{}\"\n",
@@ -352,7 +354,7 @@ mod tests {
         assert!(content.contains("myconn:"));
         assert!(content.contains("host: 10.0.0.1"));
         assert!(content.contains("user: deploy"));
-        assert!(content.contains("auth: key"));
+        assert!(content.contains("type: key"));
         assert!(content.contains("key: ~/.ssh/id_rsa"));
         assert!(content.contains("description:"));
     }
@@ -373,7 +375,7 @@ mod tests {
         run_with_input(Layer::User, dir.path(), &answers).unwrap();
 
         let content = fs::read_to_string(dir.path().join("connections.yaml")).unwrap();
-        assert!(content.contains("auth: password"));
+        assert!(content.contains("type: password"));
         assert!(!content.contains("key:"));
     }
 
@@ -414,7 +416,7 @@ mod tests {
         write_yaml(
             dir.path(),
             "connections.yaml",
-            "version: 1\n\nconnections:\n  existing:\n    host: h\n    user: u\n    auth: key\n    description: \"d\"\n",
+            "version: 1\n\nconnections:\n  existing:\n    host: h\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: \"d\"\n",
         );
 
         let answers = [
@@ -439,7 +441,7 @@ mod tests {
         write_yaml(
             dir.path(),
             "connections.yaml",
-            "version: 1\n\nconnections:\n  myconn:\n    host: h\n    user: u\n    auth: key\n    description: \"d\"\n",
+            "version: 1\n\nconnections:\n  myconn:\n    host: h\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: \"d\"\n",
         );
 
         let answers = ["myconn", "other.host", "user", "", "password", "Dup", ""];
@@ -485,7 +487,7 @@ mod tests {
     #[test]
     fn test_insert_connection_appends_under_existing_connections_key() {
         let content = "version: 1\n\nconnections:\n  a:\n    host: h\n";
-        let entry = "    host: newhost\n    user: u\n    auth: key\n    description: \"d\"\n";
+        let entry = "    host: newhost\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: \"d\"\n";
         let result = insert_connection(content, "b", entry);
         assert!(result.contains("a:"));
         assert!(result.contains("b:"));
@@ -495,7 +497,7 @@ mod tests {
     #[test]
     fn test_insert_connection_adds_connections_section_when_missing() {
         let content = "version: 1\n";
-        let entry = "    host: h\n    user: u\n    auth: key\n    description: \"d\"\n";
+        let entry = "    host: h\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: \"d\"\n";
         let result = insert_connection(content, "srv", entry);
         assert!(result.contains("connections:"));
         assert!(result.contains("srv:"));
@@ -540,7 +542,7 @@ mod tests {
         // Write initial content with looser permissions to simulate existing file.
         fs::write(
             &target,
-            "version: 1\n\nconnections:\n  existing:\n    host: h\n    user: u\n    auth: key\n    description: \"d\"\n",
+            "version: 1\n\nconnections:\n  existing:\n    host: h\n    user: u\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: \"d\"\n",
         )
         .unwrap();
         fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();

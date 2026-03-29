@@ -192,7 +192,7 @@ fn conn_key(name: &str, host: &str, user: &str, port: Option<u16>, key: &str) ->
         None => String::new(),
     };
     format!(
-        "connections:\n  {name}:\n    host: {host}\n    user: {user}{port_line}\n    auth: key\n    key: {key}\n    description: test connection\n"
+        "connections:\n  {name}:\n    host: {host}\n    user: {user}{port_line}\n    auth:\n      type: key\n      key: {key}\n    description: test connection\n"
     )
 }
 
@@ -202,7 +202,7 @@ fn conn_password(name: &str, host: &str, user: &str, port: Option<u16>) -> Strin
         None => String::new(),
     };
     format!(
-        "connections:\n  {name}:\n    host: {host}\n    user: {user}{port_line}\n    auth: password\n    description: test connection\n"
+        "connections:\n  {name}:\n    host: {host}\n    user: {user}{port_line}\n    auth:\n      type: password\n    description: test connection\n"
     )
 }
 
@@ -674,7 +674,7 @@ fn parse_error_minimal_valid_project_config() {
     // simulate a manually created file with all required fields present.
     env.write_project_config(
         "connections",
-        "connections:\n  my-server:\n    host: 10.0.0.1\n    user: admin\n    auth: password\n    description: My server\n",
+        "connections:\n  my-server:\n    host: 10.0.0.1\n    user: admin\n    auth:\n      type: password\n    description: My server\n",
     );
 
     let out = env.run(&["list"]);
@@ -698,7 +698,7 @@ fn parse_error_minimal_valid_user_config() {
     // Write directly to the user layer config directory.
     env.write_user_config(
         "connections",
-        "connections:\n  user-server:\n    host: 192.168.1.5\n    user: root\n    auth: password\n    description: User server\n",
+        "connections:\n  user-server:\n    host: 192.168.1.5\n    user: root\n    auth:\n      type: password\n    description: User server\n",
     );
 
     let out = env.run(&["list"]);
@@ -723,7 +723,7 @@ fn parse_error_missing_required_field() {
     // 'host' field is intentionally absent.
     env.write_project_config(
         "connections",
-        "connections:\n  bad-server:\n    user: admin\n    auth: password\n    description: Missing host\n",
+        "connections:\n  bad-server:\n    user: admin\n    auth:\n      type: password\n    description: Missing host\n",
     );
 
     let out = env.run(&["list"]);
@@ -831,7 +831,7 @@ fn wildcard_pattern_match_ssh_receives_input_as_host() {
     // Pattern "web-*" in user config — any "web-<something>" input matches.
     env.write_user_config(
         "connections",
-        "connections:\n  web-*:\n    host: placeholder.internal\n    user: deploy\n    auth: password\n    description: Wildcard web servers\n",
+        "connections:\n  web-*:\n    host: placeholder.internal\n    user: deploy\n    auth:\n      type: password\n    description: Wildcard web servers\n",
     );
 
     // Connect using a concrete hostname that matches the pattern.
@@ -861,7 +861,7 @@ fn wildcard_conflict_exits_nonzero_with_pattern_names_in_stderr() {
     // Note: a bare `*` at the start of a YAML key is a YAML anchor — quote it.
     env.write_user_config(
         "connections",
-        "connections:\n  web-*:\n    host: ph1\n    user: deploy\n    auth: password\n    description: Web wildcard\n  \"?eb-prod\":\n    host: ph2\n    user: admin\n    auth: password\n    description: Prefix wildcard\n",
+        "connections:\n  web-*:\n    host: ph1\n    user: deploy\n    auth:\n      type: password\n    description: Web wildcard\n  \"?eb-prod\":\n    host: ph2\n    user: admin\n    auth:\n      type: password\n    description: Prefix wildcard\n",
     );
 
     let out = env.run_in_container(&["connect", "web-prod"]);
@@ -889,7 +889,7 @@ fn wildcard_name_template_in_host_expands_to_fqdn() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  server*:\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth: password\n    description: Corp servers\n",
+        "connections:\n  server*:\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth:\n      type: password\n    description: Corp servers\n",
     );
 
     let out = env.run_in_container(&["connect", "server01"]);
@@ -916,7 +916,7 @@ fn range_pattern_with_name_template_expands_to_fqdn() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  \"server[1..10]\":\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth: password\n    description: Corp servers\n",
+        "connections:\n  \"server[1..10]\":\n    host: \"${name}.corp.com\"\n    user: deploy\n    auth:\n      type: password\n    description: Corp servers\n",
     );
 
     let out = env.run_in_container(&["connect", "server5"]);
@@ -941,7 +941,7 @@ fn range_conflict_with_glob_exits_nonzero_with_pattern_names_in_stderr() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  \"server[1..10]\":\n    host: ph1\n    user: deploy\n    auth: password\n    description: Range pattern\n  server*:\n    host: ph2\n    user: admin\n    auth: password\n    description: Glob pattern\n",
+        "connections:\n  \"server[1..10]\":\n    host: ph1\n    user: deploy\n    auth:\n      type: password\n    description: Range pattern\n  server*:\n    host: ph2\n    user: admin\n    auth:\n      type: password\n    description: Glob pattern\n",
     );
 
     let out = env.run_in_container(&["connect", "server5"]);
@@ -971,7 +971,7 @@ fn ssh_config_install_writes_host_blocks_and_include() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  prod-web:\n    host: 10.0.1.50\n    user: deploy\n    auth: key\n    key: ~/.ssh/prod_key\n    description: Production web\n  staging-db:\n    host: staging.internal\n    user: dbadmin\n    port: 2222\n    auth: password\n    description: Staging database\n",
+        "connections:\n  prod-web:\n    host: 10.0.1.50\n    user: deploy\n    auth:\n      type: key\n      key: ~/.ssh/prod_key\n    description: Production web\n  staging-db:\n    host: staging.internal\n    user: dbadmin\n    port: 2222\n    auth:\n      type: password\n    description: Staging database\n",
     );
 
     let out = env.run(&["ssh-config", "install"]);
@@ -1052,7 +1052,7 @@ fn ssh_config_install_dry_run_prints_to_stdout_no_files_written() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  myhost:\n    host: 192.168.1.1\n    user: admin\n    auth: password\n    description: My host\n",
+        "connections:\n  myhost:\n    host: 192.168.1.1\n    user: admin\n    auth:\n      type: password\n    description: My host\n",
     );
 
     let out = env.run(&["ssh-config", "install", "--dry-run"]);
@@ -1079,7 +1079,7 @@ fn ssh_config_user_override_renders_expanded_user_line() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  srv:\n    host: 10.0.0.1\n    user: \"${user}\"\n    auth: password\n    description: test\n",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: \"${user}\"\n    auth:\n      type: password\n    description: test\n",
     );
 
     let out = env.run(&["ssh-config", "install", "--dry-run", "--user", "user:alice"]);
@@ -1103,7 +1103,7 @@ fn ssh_config_skip_user_omits_user_lines() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: test\n",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: password\n    description: test\n",
     );
 
     let out = env.run(&["ssh-config", "install", "--dry-run", "--skip-user"]);
@@ -1129,7 +1129,7 @@ fn ssh_config_unresolved_user_template_prompts_and_resolves() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth: password\n    description: test\n",
+        "connections:\n  srv:\n    host: myhost\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: test\n",
     );
 
     // Provide the value via stdin.
@@ -1171,7 +1171,7 @@ fn ssh_config_preserves_foreign_host_blocks() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  prod-web:\n    host: 10.0.1.50\n    user: deploy\n    auth: password\n    description: Production web\n",
+        "connections:\n  prod-web:\n    host: 10.0.1.50\n    user: deploy\n    auth:\n      type: password\n    description: Production web\n",
     );
 
     // Pre-populate yconn-connections with a foreign Host block that yconn
@@ -1221,7 +1221,7 @@ fn ssh_config_two_runs_accumulate_blocks() {
     // First run: write project config with one connection.
     env.write_user_config(
         "connections",
-        "connections:\n  first-host:\n    host: 10.0.1.1\n    user: alice\n    auth: password\n    description: First host\n",
+        "connections:\n  first-host:\n    host: 10.0.1.1\n    user: alice\n    auth:\n      type: password\n    description: First host\n",
     );
     let out1 = env.run(&["ssh-config", "install"]);
     TestEnv::assert_ok(&out1);
@@ -1230,7 +1230,7 @@ fn ssh_config_two_runs_accumulate_blocks() {
     let user_config_path = env.xdg_config.path().join("yconn").join("connections.yaml");
     fs::write(
         &user_config_path,
-        "connections:\n  second-host:\n    host: 10.0.1.2\n    user: bob\n    auth: password\n    description: Second host\n",
+        "connections:\n  second-host:\n    host: 10.0.1.2\n    user: bob\n    auth:\n      type: password\n    description: Second host\n",
     )
     .unwrap();
     let out2 = env.run(&["ssh-config", "install"]);
@@ -1259,7 +1259,7 @@ fn ssh_config_print_outputs_host_blocks_to_stdout() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  myhost:\n    host: 192.168.1.5\n    user: admin\n    auth: password\n    description: My host\n",
+        "connections:\n  myhost:\n    host: 192.168.1.5\n    user: admin\n    auth:\n      type: password\n    description: My host\n",
     );
 
     let out = env.run(&["ssh-config", "print"]);
@@ -1295,7 +1295,7 @@ fn ssh_config_print_skip_user_omits_user_lines() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: test\n",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: password\n    description: test\n",
     );
 
     let out = env.run(&["ssh-config", "print", "--skip-user"]);
@@ -1322,7 +1322,7 @@ fn ssh_config_uninstall_removes_file_and_include_line() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: test\n",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: password\n    description: test\n",
     );
 
     // Install first.
@@ -1381,7 +1381,7 @@ fn ssh_config_disable_removes_include_line_keeps_file() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: test\n",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: password\n    description: test\n",
     );
 
     // Install first.
@@ -1419,7 +1419,7 @@ fn ssh_config_enable_adds_include_line_when_absent() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: test\n",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: password\n    description: test\n",
     );
 
     // Install then disable to remove Include.
@@ -1453,7 +1453,7 @@ fn ssh_config_enable_noop_when_include_already_present() {
 
     env.write_user_config(
         "connections",
-        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: test\n",
+        "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: password\n    description: test\n",
     );
 
     // Install to set up Include line.
@@ -1549,7 +1549,7 @@ fn connect_user_override_expands_dollar_user() {
     env.write_user_config(
         "connections",
         &format!(
-            "connections:\n  srv:\n    host: myhost\n    user: \"${{user}}\"\n    auth: key\n    key: {key}\n    description: test\n"
+            "connections:\n  srv:\n    host: myhost\n    user: \"${{user}}\"\n    auth:\n      type: key\n      key: {key}\n    description: test\n"
         ),
     );
 
@@ -1572,7 +1572,7 @@ fn connect_named_users_map_entry_expands_in_user_field() {
     env.write_user_config(
         "connections",
         &format!(
-            "users:\n  testuser: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${{testuser}}\"\n    auth: key\n    key: {key}\n    description: test\n"
+            "users:\n  testuser: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${{testuser}}\"\n    auth:\n      type: key\n      key: {key}\n    description: test\n"
         ),
     );
 
@@ -1595,7 +1595,7 @@ fn connect_user_override_shadows_config_users_entry() {
     env.write_user_config(
         "connections",
         &format!(
-            "users:\n  testuser: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${{testuser}}\"\n    auth: key\n    key: {key}\n    description: test\n"
+            "users:\n  testuser: \"ops\"\nconnections:\n  srv:\n    host: myhost\n    user: \"${{testuser}}\"\n    auth:\n      type: key\n      key: {key}\n    description: test\n"
         ),
     );
 
@@ -1667,7 +1667,7 @@ fn show_dump_outputs_merged_config_as_yaml() {
     let env = TestEnv::new();
     env.write_project_config(
         "connections",
-        "connections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth: key\n    key: ~/.ssh/id_rsa\n    description: Production\n  staging:\n    host: 10.0.0.2\n    user: admin\n    auth: password\n    description: Staging\nusers:\n  testuser: alice\n  mybot: botuser\n",
+        "connections:\n  prod:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: Production\n  staging:\n    host: 10.0.0.2\n    user: admin\n    auth:\n      type: password\n    description: Staging\nusers:\n  testuser: alice\n  mybot: botuser\n",
     );
     let out = env.run(&["connections", "show", "--dump"]);
     TestEnv::assert_ok(&out);
@@ -1780,7 +1780,7 @@ fn show_name_still_works_after_dump_flag_added() {
     let env = TestEnv::new();
     env.write_project_config(
         "connections",
-        "connections:\n  web:\n    host: 1.2.3.4\n    user: ops\n    auth: password\n    description: Web\n",
+        "connections:\n  web:\n    host: 1.2.3.4\n    user: ops\n    auth:\n      type: password\n    description: Web\n",
     );
     let out = env.run(&["connections", "show", "web"]);
     TestEnv::assert_ok(&out);
@@ -1803,7 +1803,7 @@ fn show_name_and_dump_together_errors() {
     let env = TestEnv::new();
     env.write_project_config(
         "connections",
-        "connections:\n  web:\n    host: 1.2.3.4\n    user: ops\n    auth: password\n    description: Web\n",
+        "connections:\n  web:\n    host: 1.2.3.4\n    user: ops\n    auth:\n      type: password\n    description: Web\n",
     );
     let out = env.run(&["connections", "show", "web", "--dump"]);
     assert!(!out.status.success(), "expected non-zero exit");
@@ -1819,7 +1819,7 @@ fn install_copies_new_connections_to_user_layer() {
 
     env.write_project_config(
         "connections",
-        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: \"Alpha server\"\n  beta:\n    host: 10.0.0.2\n    user: ops\n    auth: password\n    description: \"Beta server\"\n",
+        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: password\n    description: \"Alpha server\"\n  beta:\n    host: 10.0.0.2\n    user: ops\n    auth:\n      type: password\n    description: \"Beta server\"\n",
     );
 
     let out = env.run(&["install"]);
@@ -1860,13 +1860,13 @@ fn install_updates_existing_with_y_and_appends_new() {
     // Project config: alpha (updated host) and beta (new).
     env.write_project_config(
         "connections",
-        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.99\n    user: deploy\n    auth: password\n    description: \"Alpha updated\"\n  beta:\n    host: 10.0.0.2\n    user: ops\n    auth: password\n    description: \"Beta server\"\n",
+        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.99\n    user: deploy\n    auth:\n      type: password\n    description: \"Alpha updated\"\n  beta:\n    host: 10.0.0.2\n    user: ops\n    auth:\n      type: password\n    description: \"Beta server\"\n",
     );
 
     // Pre-populate user layer with alpha at old host.
     env.write_user_config(
         "connections",
-        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: deploy\n    auth: password\n    description: \"Alpha old\"\n",
+        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: password\n    description: \"Alpha old\"\n",
     );
 
     // Answer `y` to the update prompt for alpha.
@@ -1909,7 +1909,7 @@ fn install_missing_user_variable_prompts_and_writes_value() {
 
     env.write_project_config(
         "connections",
-        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth: password\n    description: \"Alpha server\"\n",
+        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: \"Alpha server\"\n",
     );
 
     // Provide the value for the missing user variable via stdin.
@@ -1945,7 +1945,7 @@ fn ssh_config_install_missing_user_variable_prompts_and_generates_correct_host_b
 
     env.write_user_config(
         "connections",
-        "connections:\n  conn-a:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth: password\n    description: A\n  conn-b:\n    host: 10.0.0.2\n    user: \"${t1user}\"\n    auth: password\n    description: B\n",
+        "connections:\n  conn-a:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: A\n  conn-b:\n    host: 10.0.0.2\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: B\n",
     );
 
     // Both connections share the same ${t1user} key — should prompt only once.
