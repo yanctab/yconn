@@ -206,6 +206,16 @@ fn conn_password(name: &str, host: &str, user: &str, port: Option<u16>) -> Strin
     )
 }
 
+fn conn_identity(name: &str, host: &str, user: &str, port: Option<u16>, key: &str) -> String {
+    let port_line = match port {
+        Some(p) => format!("\n    port: {p}"),
+        None => String::new(),
+    };
+    format!(
+        "connections:\n  {name}:\n    host: {host}\n    user: {user}{port_line}\n    auth:\n      type: identity\n      key: {key}\n    description: test connection\n"
+    )
+}
+
 /// Wrap a connections YAML block in a docker section.
 ///
 /// `connections_yaml` must start with `connections:\n`.
@@ -1976,5 +1986,158 @@ fn ssh_config_install_missing_user_variable_prompts_and_generates_correct_host_b
     assert!(
         !host_blocks.contains("${t1user}"),
         "unresolved token should not appear in Host blocks: {host_blocks}"
+    );
+}
+
+// ─── Identity auth round-trip ────────────────────────────────────────────────
+
+#[test]
+fn identity_connect_produces_ssh_args_with_warning() {
+    let env = TestEnv::new();
+    let key = env.write_key("github_key");
+    env.write_user_config(
+        "connections",
+        &conn_identity("github", "github.com", "git", None, &key),
+    );
+
+    let out = env.run(&["connect", "github"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // Mock ssh prints: ssh -F /dev/null -i <key> git@github.com
+    assert!(stdout.contains("-i"), "identity auth must produce -i flag");
+    assert!(stdout.contains(&key), "must contain key path");
+    assert!(
+        stdout.contains("git@github.com"),
+        "must contain destination"
+    );
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("identity-only"),
+        "stderr must contain identity-only warning, got: {stderr}"
+    );
+}
+
+#[test]
+fn identity_list_shows_identity_auth_type() {
+    let env = TestEnv::new();
+    let key = env.write_key("github_key");
+    env.write_user_config(
+        "connections",
+        &conn_identity("github", "github.com", "git", None, &key),
+    );
+
+    let out = env.run(&["list"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("identity"),
+        "list output must show 'identity' auth type, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("github"),
+        "list output must show connection name"
+    );
+}
+
+#[test]
+fn identity_show_displays_auth_and_key() {
+    let env = TestEnv::new();
+    let key = env.write_key("github_key");
+    env.write_user_config(
+        "connections",
+        &conn_identity("github", "github.com", "git", None, &key),
+    );
+
+    let out = env.run(&["connections", "show", "github"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("identity"),
+        "show output must display 'identity' auth, got: {stdout}"
+    );
+    assert!(
+        stdout.contains(&key),
+        "show output must display key path, got: {stdout}"
+    );
+}
+
+#[test]
+fn identity_show_dump_serializes_correctly() {
+    let env = TestEnv::new();
+    let key = env.write_key("github_key");
+    env.write_user_config(
+        "connections",
+        &conn_identity("github", "github.com", "git", None, &key),
+    );
+
+    let out = env.run(&["connections", "show", "--dump"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("type: identity"),
+        "dump must contain 'type: identity', got: {stdout}"
+    );
+    assert!(
+        stdout.contains(&key),
+        "dump must contain key path, got: {stdout}"
+    );
+}
+
+#[test]
+fn identity_ssh_config_install_emits_identities_only() {
+    let env = TestEnv::new();
+    let key = env.write_key("github_key");
+    env.write_user_config(
+        "connections",
+        &conn_identity("github", "github.com", "git", None, &key),
+    );
+
+    let out = env.run(&["ssh-config", "install"]);
+    TestEnv::assert_ok(&out);
+
+    let ssh_dir = env.home.path().join(".ssh");
+    let conn_file = ssh_dir.join("yconn-connections");
+    assert!(conn_file.exists(), "yconn-connections must be created");
+
+    let content = fs::read_to_string(&conn_file).unwrap();
+    assert!(
+        content.contains("Host github\n"),
+        "missing Host block for identity connection"
+    );
+    assert!(
+        content.contains(&format!("    IdentityFile {key}\n")),
+        "identity auth must emit IdentityFile, got: {content}"
+    );
+    assert!(
+        content.contains("    IdentitiesOnly yes\n"),
+        "identity auth must emit IdentitiesOnly yes, got: {content}"
+    );
+}
+
+#[test]
+fn identity_add_wizard_round_trip() {
+    let env = TestEnv::new();
+    let key = env.write_key("github_key");
+    // Wizard answers: name, host, user, port, auth, key, description, link
+    let answers = format!("github\ngithub.com\ngit\n\nidentity\n{key}\nGitHub identity\n\n");
+    let out = env.run_with_stdin(&["connections", "add"], &answers);
+    TestEnv::assert_ok(&out);
+
+    // Verify the connection was added by listing it.
+    let out = env.run(&["list"]);
+    TestEnv::assert_ok(&out);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("github"),
+        "added identity connection must appear in list, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("identity"),
+        "identity auth type must appear in list, got: {stdout}"
     );
 }

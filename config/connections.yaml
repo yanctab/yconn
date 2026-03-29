@@ -36,3 +36,11 @@ connections:
       type: key
       key: ~/.ssh/bastion_key
     description: "Bastion host — jump point for internal network"
+
+  github:
+    host: github.com
+    user: git
+    auth:
+      type: identity
+      key: ~/.ssh/github_key
+    description: "GitHub — identity-only for git operations"

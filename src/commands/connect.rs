@@ -28,6 +28,14 @@ pub fn run(
     }
     conn.user = expanded_user;
 
+    // Warn for identity-only connections that may not support interactive SSH.
+    if matches!(conn.auth, crate::config::Auth::Identity { .. }) {
+        renderer.warn(
+            "this connection is configured as identity-only (e.g. for git hosts) \
+             and may not support interactive SSH sessions",
+        );
+    }
+
     // Security: validate the key file before trying to connect.
     // Expand a leading `~` so that the existence and permission checks operate
     // on the real path — Path::new("~/.ssh/id_rsa") does not exist literally.

@@ -90,6 +90,9 @@ pub fn render_ssh_config(connections: &[Connection], skip_user: bool) -> String 
         }
         if let Some(key) = conn.auth.key() {
             out.push_str(&format!("    IdentityFile {key}\n"));
+            if matches!(conn.auth, crate::config::Auth::Identity { .. }) {
+                out.push_str("    IdentitiesOnly yes\n");
+            }
         }
         out.push('\n');
     }
@@ -644,6 +647,10 @@ mod tests {
                 key: key.unwrap_or("~/.ssh/id_rsa").to_string(),
                 cmd: None,
             },
+            "identity" => Auth::Identity {
+                key: key.unwrap_or("~/.ssh/id_rsa").to_string(),
+                cmd: None,
+            },
             _ => Auth::Password,
         };
         Connection {
@@ -700,6 +707,58 @@ mod tests {
         assert!(
             !out.contains("IdentityFile"),
             "no IdentityFile for password auth"
+        );
+    }
+
+    #[test]
+    fn test_identity_auth_emits_identity_file_and_identities_only() {
+        let conn = make_conn(
+            "github",
+            "github.com",
+            "git",
+            22,
+            "identity",
+            Some("~/.ssh/github_key"),
+        );
+        let out = render_ssh_config(&[conn], false);
+        assert!(out.contains("Host github\n"), "missing Host line");
+        assert!(out.contains("    HostName github.com\n"));
+        assert!(out.contains("    User git\n"));
+        assert!(
+            out.contains("    IdentityFile ~/.ssh/github_key\n"),
+            "identity auth must emit IdentityFile"
+        );
+        assert!(
+            out.contains("    IdentitiesOnly yes\n"),
+            "identity auth must emit IdentitiesOnly yes"
+        );
+        // IdentitiesOnly must appear after IdentityFile.
+        let id_file_pos = out.find("IdentityFile").unwrap();
+        let id_only_pos = out.find("IdentitiesOnly").unwrap();
+        assert!(
+            id_only_pos > id_file_pos,
+            "IdentitiesOnly must appear after IdentityFile"
+        );
+    }
+
+    #[test]
+    fn test_key_auth_does_not_emit_identities_only() {
+        let conn = make_conn(
+            "prod-web",
+            "10.0.1.50",
+            "deploy",
+            22,
+            "key",
+            Some("~/.ssh/id_rsa"),
+        );
+        let out = render_ssh_config(&[conn], false);
+        assert!(
+            out.contains("    IdentityFile ~/.ssh/id_rsa\n"),
+            "key auth must emit IdentityFile"
+        );
+        assert!(
+            !out.contains("IdentitiesOnly"),
+            "key auth must NOT emit IdentitiesOnly"
         );
     }
 
