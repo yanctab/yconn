@@ -92,6 +92,7 @@ coverage:
 ## clean - remove build artifacts
 clean:
 	cargo clean
+	rm -rf dist
 
 ## release - bump minor version, commit, tag, and push to trigger the release pipeline
 release:
@@ -112,6 +113,7 @@ release:
 
 ## package - build .deb and Arch .pkg.tar.zst from the release binary
 package:
+	rm -rf dist
 	$(MAKE) build
 	$(MAKE) build-deb
 	$(MAKE) build-pkg
