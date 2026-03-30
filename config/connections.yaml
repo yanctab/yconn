@@ -1,33 +1,50 @@
 version: 1
 
-# Optional: re-invoke yconn inside Docker so SSH keys stay in the image.
-# Remove this block if you are not using Docker-based key distribution.
-#
-# docker:
-#   image: ghcr.io/myorg/yconn-keys:latest
-#   pull: missing   # "always" | "missing" (default) | "never"
-#   args:
-#     - "--network=host"
+# ─── Users ────────────────────────────────────────────────────────────────────
+# The `users:` block defines key-value pairs for template resolution.
+# Any connection field containing `${key}` is expanded using these values.
+# Users are merged across layers — higher-priority layers win on key collision.
+
+users:
+  deploy_user: deploy
+  db_user: dbadmin
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+# When a `docker:` block is present, yconn re-invokes itself inside a container
+# so SSH keys baked into the image are available without distributing them to
+# developer machines. Only trusted in project (.yconn/) and system (/etc/yconn/)
+# layers — ignored with a warning in user (~/.config/yconn/) layer.
+
+docker:
+  image: ghcr.io/myorg/yconn-keys:latest   # required — the container image to use
+  pull: missing                             # "always" | "missing" (default) | "never"
+  args:                                     # extra flags appended to `docker run`
+    - "--network=host"
+    - "--env=MY_VAR=value"
+    - "--volume=/opt/certs:/opt/certs:ro"
+
+# ─── Connections ──────────────────────────────────────────────────────────────
+# Each connection requires: host, user, auth, description.
+# Optional fields: port (default 22), link, group.
 
 connections:
+
+  # --- Key-based auth (most common) ------------------------------------------
+  # `auth.type: key` requires a `key` path to the private key file.
   prod-web:
     host: 10.0.1.50
-    user: deploy
+    user: ${deploy_user}                    # resolved via users: block -> "deploy"
     port: 22
     auth:
       type: key
       key: ~/.ssh/prod_deploy_key
     description: "Primary production web server"
     link: https://wiki.internal/servers/prod-web
+    group: production                       # inline group tag for filtering
 
-  staging-db:
-    host: staging.internal
-    user: dbadmin
-    auth:
-      type: password
-    description: "Staging database server — use with caution"
-    link: https://wiki.internal/servers/staging-db
-
+  # --- Key auth with cmd field ------------------------------------------------
+  # `auth.cmd` stores a shell command hint (parsed and stored only, not executed).
+  # Useful for documenting how to fetch or rotate the key.
   bastion:
     host: bastion.example.com
     user: ec2-user
@@ -35,8 +52,25 @@ connections:
     auth:
       type: key
       key: ~/.ssh/bastion_key
+      cmd: "vault read -field=private_key secret/ssh/bastion > ~/.ssh/bastion_key"
     description: "Bastion host — jump point for internal network"
+    link: https://wiki.internal/servers/bastion
 
+  # --- Password auth ----------------------------------------------------------
+  # `auth.type: password` means SSH prompts natively at runtime.
+  # No password is ever stored in config — this is intentional.
+  staging-db:
+    host: staging.internal
+    user: ${db_user}                        # resolved via users: block -> "dbadmin"
+    auth:
+      type: password
+    description: "Staging database server — use with caution"
+    link: https://wiki.internal/servers/staging-db
+    group: staging
+
+  # --- Identity-only auth -----------------------------------------------------
+  # `auth.type: identity` produces IdentityFile + IdentitiesOnly in ssh-config.
+  # Designed for hosts where you only need to present an identity (e.g. git).
   github:
     host: github.com
     user: git
@@ -44,3 +78,34 @@ connections:
       type: identity
       key: ~/.ssh/github_key
     description: "GitHub — identity-only for git operations"
+
+  # --- Identity auth with cmd -------------------------------------------------
+  # Like key auth, identity auth also supports cmd for key provisioning hints.
+  gitlab:
+    host: gitlab.example.com
+    user: git
+    auth:
+      type: identity
+      key: ~/.ssh/gitlab_key
+      cmd: "op read 'op://DevOps/GitLab SSH/private key' > ~/.ssh/gitlab_key"
+    description: "GitLab — identity-only for internal git operations"
+
+  # --- Minimal connection (no port, no link, no group) ------------------------
+  # Only the required fields: host, user, auth, description.
+  dev-local:
+    host: 192.168.1.5
+    user: root
+    auth:
+      type: key
+      key: ~/.ssh/dev_key
+    description: "Local dev VM"
+
+  # --- Password auth with custom port, no link --------------------------------
+  legacy-db:
+    host: 10.0.2.99
+    user: admin
+    port: 2200
+    auth:
+      type: password
+    description: "Legacy database — scheduled for decommission"
+    group: production
