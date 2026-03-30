@@ -32,12 +32,14 @@ sudo apt install "./yconn_${VERSION}_amd64.deb"
 ```bash
 git clone https://github.com/yanctab/yconn.git
 cd yconn
-make build
-sudo make install          # installs to /usr/local/bin/yconn
-# or: make install PREFIX=~/.local   # installs to ~/.local/bin/yconn (no sudo needed)
+make install    # builds a .deb or .pkg.tar.zst and installs it (Debian/Ubuntu or Arch)
 ```
 
-The man page is also installed if you have run `make docs` first.
+`make install` auto-detects the distro, builds the native package via `make package`,
+and installs it with the system package manager (`apt-get` or `pacman`). Only the
+package-manager invocation uses `sudo` — you do not need to run `sudo make install`.
+
+To build packages without installing, run `make package` instead.
 
 ### Cargo
 

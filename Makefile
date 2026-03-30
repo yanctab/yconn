@@ -22,11 +22,48 @@ setup:
 build:
 	cargo build --release --target $(TARGET)
 
-## install - install binary (and man page if built) to PREFIX=/usr/local — use sudo for system paths
-install: build
-	install -Dm755 target/$(TARGET)/release/$(BINARY) $(PREFIX)/bin/$(BINARY)
-	@if [ -f docs/man/$(BINARY).1 ]; then \
-		install -Dm644 docs/man/$(BINARY).1 $(PREFIX)/share/man/man1/$(BINARY).1; \
+## install - build a distro-native package and install it (Debian/Ubuntu or Arch)
+install: package
+	@if [ ! -f /etc/os-release ]; then \
+		echo "error: cannot detect distribution — /etc/os-release not found."; \
+		echo ""; \
+		echo "You can build packages without installing by running:"; \
+		echo "  make package"; \
+		echo ""; \
+		echo "Then install manually:"; \
+		echo "  Debian/Ubuntu: sudo apt-get install ./dist/$(BINARY)_$(VERSION)_amd64.deb"; \
+		echo "  Arch Linux:    sudo pacman -U dist/$(BINARY)-$(VERSION)-1-x86_64.pkg.tar.zst"; \
+		exit 1; \
+	fi; \
+	. /etc/os-release; \
+	ID="$${ID:-}"; \
+	ID_LIKE="$${ID_LIKE:-}"; \
+	is_debian_like() { \
+		case "$$ID" in debian|ubuntu) return 0;; esac; \
+		case "$$ID_LIKE" in *debian*|*ubuntu*) return 0;; esac; \
+		return 1; \
+	}; \
+	is_arch_like() { \
+		case "$$ID" in arch) return 0;; esac; \
+		case "$$ID_LIKE" in *arch*) return 0;; esac; \
+		return 1; \
+	}; \
+	if is_debian_like; then \
+		echo "Detected Debian/Ubuntu-based distribution: $$ID"; \
+		sudo apt-get install -y ./dist/$(BINARY)_$(VERSION)_amd64.deb; \
+	elif is_arch_like; then \
+		echo "Detected Arch Linux-based distribution: $$ID"; \
+		sudo pacman -U --noconfirm dist/$(BINARY)-$(VERSION)-1-x86_64.pkg.tar.zst; \
+	else \
+		echo "error: unsupported distribution: $$ID"; \
+		echo ""; \
+		echo "You can build packages without installing by running:"; \
+		echo "  make package"; \
+		echo ""; \
+		echo "Then install manually:"; \
+		echo "  Debian/Ubuntu: sudo apt-get install ./dist/$(BINARY)_$(VERSION)_amd64.deb"; \
+		echo "  Arch Linux:    sudo pacman -U dist/$(BINARY)-$(VERSION)-1-x86_64.pkg.tar.zst"; \
+		exit 1; \
 	fi
 
 ## fmt - auto-format code with cargo fmt
