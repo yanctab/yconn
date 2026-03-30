@@ -31,7 +31,7 @@ install: package
 		echo "  make package"; \
 		echo ""; \
 		echo "Then install manually:"; \
-		echo "  Debian/Ubuntu: sudo apt-get install ./dist/$(BINARY)_$(VERSION)_amd64.deb"; \
+		echo "  Debian/Ubuntu: sudo dpkg -i ./dist/$(BINARY)_$(VERSION)_amd64.deb"; \
 		echo "  Arch Linux:    sudo pacman -U dist/$(BINARY)-$(VERSION)-1-x86_64.pkg.tar.zst"; \
 		exit 1; \
 	fi; \
@@ -50,7 +50,7 @@ install: package
 	}; \
 	if is_debian_like; then \
 		echo "Detected Debian/Ubuntu-based distribution: $$ID"; \
-		sudo apt-get install -y ./dist/$(BINARY)_$(VERSION)_amd64.deb; \
+		sudo dpkg -i ./dist/$(BINARY)_$(VERSION)_amd64.deb; \
 	elif is_arch_like; then \
 		echo "Detected Arch Linux-based distribution: $$ID"; \
 		sudo pacman -U --noconfirm dist/$(BINARY)-$(VERSION)-1-x86_64.pkg.tar.zst; \
@@ -61,7 +61,7 @@ install: package
 		echo "  make package"; \
 		echo ""; \
 		echo "Then install manually:"; \
-		echo "  Debian/Ubuntu: sudo apt-get install ./dist/$(BINARY)_$(VERSION)_amd64.deb"; \
+		echo "  Debian/Ubuntu: sudo dpkg -i ./dist/$(BINARY)_$(VERSION)_amd64.deb"; \
 		echo "  Arch Linux:    sudo pacman -U dist/$(BINARY)-$(VERSION)-1-x86_64.pkg.tar.zst"; \
 		exit 1; \
 	fi
