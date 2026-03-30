@@ -100,6 +100,19 @@ connections:
       key: ~/.ssh/dev_key
     description: "Local dev VM"
 
+  # --- Unresolved user variable ------------------------------------------------
+  # When a ${variable} has no matching entry in `users:`, yconn warns on
+  # ssh-config generation and prompts during `yconn install` / `yconn ssh-config
+  # install`. This is useful for connections shared via .yconn/ where each
+  # developer must supply their own username.
+  client-vpn:
+    host: vpn.client-acme.com
+    user: ${acme_user}                        # NOT in users: — will prompt on install
+    auth:
+      type: key
+      key: ~/.ssh/acme_vpn_key
+    description: "Client Acme VPN — each dev sets their own username"
+
   # --- Password auth with custom port, no link --------------------------------
   legacy-db:
     host: 10.0.2.99
