@@ -309,7 +309,7 @@ impl Renderer {
     // ── user list ─────────────────────────────────────────────────────────────
 
     fn render_user_list(&self, rows: &[UserRow]) -> String {
-        const HEADERS: [&str; 3] = ["VARIABLE", "VALUE", "SOURCE"];
+        const HEADERS: [&str; 3] = ["USER", "VALUE", "SOURCE"];
         const GAP: &str = "   ";
 
         let mut col = [
@@ -798,6 +798,27 @@ mod tests {
         assert!(out.contains("\u{2717} not found"));
         assert!(out.contains("[project]"));
         assert!(out.contains("[system]"));
+    }
+
+    // ── user list tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_user_list_column_header_is_user_not_variable() {
+        let rows = vec![UserRow {
+            key: "deploy_user".into(),
+            value: "admin".into(),
+            source: "project (/repo/.yconn/connections.yaml)".into(),
+            shadowed: false,
+        }];
+        let out = r().render_user_list(&rows);
+        // First column header must be USER.
+        assert!(out.contains("USER"));
+        // Must not contain the old VARIABLE header.
+        // The word "VALUE" also contains "ALUE" but not "VARIABLE".
+        assert!(!out.contains("VARIABLE"));
+        // Data row renders key as ${deploy_user}.
+        assert!(out.contains("${deploy_user}"));
+        assert!(out.contains("admin"));
     }
 
     // ── verbose / warn / error tests ──────────────────────────────────────────

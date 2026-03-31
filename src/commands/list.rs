@@ -23,7 +23,6 @@ pub fn run(cfg: &LoadedConfig, renderer: &Renderer, all: bool, group: Option<&st
 
     // Print Users table before connections if any placeholders were found.
     if !user_rows.is_empty() {
-        println!("Users:");
         renderer.user_list(&user_rows);
         println!();
     }
