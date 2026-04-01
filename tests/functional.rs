@@ -1989,6 +1989,42 @@ fn ssh_config_install_missing_user_variable_prompts_and_generates_correct_host_b
     );
 }
 
+// ─── yconn install — user variable resolution from cfg.users ─────────────────
+
+/// `yconn install` with a project config containing both a `users:` block with
+/// `t1user: alice` and a connection referencing `${t1user}` completes without
+/// prompting because the merged cfg.users resolves the variable.
+#[test]
+fn install_project_users_block_resolves_variable_without_prompt() {
+    let env = TestEnv::new();
+
+    env.write_project_config(
+        "connections",
+        "version: 1\n\nusers:\n  t1user: alice\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: \"Alpha server\"\n",
+    );
+
+    let out = env.run(&["install"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // No prompt for missing variable — the project users: block resolves it.
+    assert!(
+        !stdout.contains("Missing user variable"),
+        "should not prompt when key is defined in project file's users: block, got: {stdout}"
+    );
+    // Connection should be installed.
+    assert!(
+        stdout.contains("Writing: connection alpha"),
+        "expected alpha to be installed, got: {stdout}"
+    );
+
+    // Verify the connection was written to the user layer.
+    let user_config = env.xdg_config.path().join("yconn").join("connections.yaml");
+    assert!(user_config.exists(), "user config must be created");
+    let content = fs::read_to_string(&user_config).unwrap();
+    assert!(content.contains("alpha:"), "alpha not found in user config");
+}
+
 // ─── Identity auth round-trip ────────────────────────────────────────────────
 
 #[test]
