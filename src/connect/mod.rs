@@ -122,11 +122,11 @@ mod tests {
         let auth = match auth_type {
             "key" => Auth::Key {
                 key: key.unwrap_or("~/.ssh/id_rsa").to_string(),
-                cmd: None,
+                generate_key: None,
             },
             "identity" => Auth::Identity {
                 key: key.unwrap_or("~/.ssh/id_rsa").to_string(),
-                cmd: None,
+                generate_key: None,
             },
             _ => Auth::Password,
         };

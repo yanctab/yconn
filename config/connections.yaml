@@ -42,8 +42,8 @@ connections:
     link: https://wiki.internal/servers/prod-web
     group: production                       # inline group tag for filtering
 
-  # --- Key auth with cmd field ------------------------------------------------
-  # `auth.cmd` stores a shell command hint (parsed and stored only, not executed).
+  # --- Key auth with generate_key field ----------------------------------------
+  # `auth.generate_key` stores a shell command hint (parsed and stored only, not executed).
   # Useful for documenting how to fetch or rotate the key.
   bastion:
     host: bastion.example.com
@@ -52,7 +52,7 @@ connections:
     auth:
       type: key
       key: ~/.ssh/bastion_key
-      cmd: "vault read -field=private_key secret/ssh/bastion > ~/.ssh/bastion_key"
+      generate_key: "vault read -field=private_key secret/ssh/bastion > ~/.ssh/bastion_key"
     description: "Bastion host — jump point for internal network"
     link: https://wiki.internal/servers/bastion
 
@@ -79,15 +79,15 @@ connections:
       key: ~/.ssh/github_key
     description: "GitHub — identity-only for git operations"
 
-  # --- Identity auth with cmd -------------------------------------------------
-  # Like key auth, identity auth also supports cmd for key provisioning hints.
+  # --- Identity auth with generate_key -----------------------------------------
+  # Like key auth, identity auth also supports generate_key for key provisioning hints.
   gitlab:
     host: gitlab.example.com
     user: git
     auth:
       type: identity
       key: ~/.ssh/gitlab_key
-      cmd: "op read 'op://DevOps/GitLab SSH/private key' > ~/.ssh/gitlab_key"
+      generate_key: "op read 'op://DevOps/GitLab SSH/private key' > ~/.ssh/gitlab_key"
     description: "GitLab — identity-only for internal git operations"
 
   # --- Minimal connection (no port, no link, no group) ------------------------

@@ -143,7 +143,7 @@ pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str) -> Result<()> {
         port: conn.port,
         auth: conn.auth.type_label().to_string(),
         key: conn.auth.key().map(str::to_string),
-        cmd: conn.auth.cmd().map(str::to_string),
+        generate_key: conn.auth.generate_key().map(str::to_string),
         description: conn.description.clone(),
         link: conn.link.clone(),
         source_label: conn.layer.label().to_string(),

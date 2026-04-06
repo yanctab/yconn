@@ -27,7 +27,7 @@ pub struct ConnectionDetail {
     pub port: u16,
     pub auth: String,
     pub key: Option<String>,
-    pub cmd: Option<String>,
+    pub generate_key: Option<String>,
     pub description: String,
     pub link: Option<String>,
     pub source_label: String,
@@ -217,8 +217,8 @@ impl Renderer {
     // ── show ─────────────────────────────────────────────────────────────────
 
     fn render_show(&self, detail: &ConnectionDetail) -> String {
-        // "Description:" is 12 chars — the longest label.
-        const LW: usize = 12;
+        // "Generate Key:" is 13 chars — the longest label.
+        const LW: usize = 13;
         let mut out = String::new();
         out.push_str(&format!("Connection: {}\n", detail.name));
         out.push_str(&format!("  {}  {}\n", pad("Host:", LW), detail.host));
@@ -228,8 +228,12 @@ impl Renderer {
         if let Some(key) = &detail.key {
             out.push_str(&format!("  {}  {}\n", pad("Key:", LW), key));
         }
-        if let Some(cmd) = &detail.cmd {
-            out.push_str(&format!("  {}  {}\n", pad("Cmd:", LW), cmd));
+        if let Some(generate_key) = &detail.generate_key {
+            out.push_str(&format!(
+                "  {}  {}\n",
+                pad("Generate Key:", LW),
+                generate_key
+            ));
         }
         out.push_str(&format!(
             "  {}  {}\n",
@@ -625,7 +629,7 @@ mod tests {
             port: 22,
             auth: "key".into(),
             key: Some("~/.ssh/prod_deploy_key".into()),
-            cmd: None,
+            generate_key: None,
             description: "Primary production web server".into(),
             link: Some("https://wiki.internal/servers/prod-web".into()),
             source_label: "project".into(),
@@ -657,7 +661,7 @@ mod tests {
             port: 22,
             auth: "password".into(),
             key: None,
-            cmd: None,
+            generate_key: None,
             description: "Staging DB".into(),
             link: None,
             source_label: "user".into(),
