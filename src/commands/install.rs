@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 
 use crate::cli::LayerArg;
-use crate::config::{Layer, LoadedConfig};
+use crate::config::{Layer, LoadedConfig, UserEntry};
 
 use super::add::{entry_exists, insert_connection, set_private_permissions};
 use super::user::write_user_entry;
@@ -41,6 +41,7 @@ pub fn run(cfg: &LoadedConfig, layer: Option<LayerArg>) -> Result<()> {
     run_impl(
         &project_file,
         &target_path,
+        &cfg.users,
         &mut stdin.lock(),
         &mut stdout.lock(),
     )
@@ -81,6 +82,7 @@ fn project_config_path(cfg: &LoadedConfig) -> Result<PathBuf> {
 pub(crate) fn run_impl(
     project_file: &Path,
     target_file: &Path,
+    users: &HashMap<String, UserEntry>,
     input: &mut dyn BufRead,
     output: &mut dyn Write,
 ) -> Result<()> {
@@ -112,7 +114,7 @@ pub(crate) fn run_impl(
     };
 
     // Pre-pass: detect unresolved ${key} tokens in user fields and prompt.
-    let missing = find_unresolved_user_keys(&project_content, &target_content, &connection_names);
+    let missing = find_unresolved_user_keys(&project_content, users, &connection_names);
     if !missing.is_empty() {
         prompt_missing_user_keys(target_file, &missing, input, output)?;
         // Re-read the target content since write_user_entry may have modified it.
@@ -237,49 +239,21 @@ fn extract_user_field(content: &str, conn_name: &str) -> Option<String> {
     None
 }
 
-/// Extract existing user keys from the `users:` section of a YAML file.
-fn extract_existing_user_keys(content: &str) -> Vec<String> {
-    let mut keys = Vec::new();
-    let mut in_users = false;
-
-    for line in content.lines() {
-        if line == "users:" || line.starts_with("users:") {
-            in_users = true;
-            continue;
-        }
-        if in_users {
-            if !line.is_empty() && !line.starts_with(' ') && !line.starts_with('\t') {
-                break;
-            }
-            if let Some(rest) = line.strip_prefix("  ") {
-                if let Some(key) = rest.split_once(':').map(|(k, _)| k) {
-                    if !key.is_empty() && !key.starts_with(' ') {
-                        keys.push(key.to_string());
-                    }
-                }
-            }
-        }
-    }
-    keys
-}
-
 /// Scan project connections for `${key}` tokens in user fields that are not
-/// resolved in the target file's `users:` section. Returns a map from
-/// unresolved key name to the list of connection names that reference it.
+/// resolved in the merged `cfg.users` map (from all layers). Returns a vec of
+/// `(key_name, vec_of_connection_names)` sorted by key name.
 fn find_unresolved_user_keys(
     project_content: &str,
-    target_content: &str,
+    users: &HashMap<String, UserEntry>,
     connection_names: &[String],
 ) -> Vec<(String, Vec<String>)> {
-    let existing_keys = extract_existing_user_keys(target_content);
-
     // key -> list of connection names
     let mut unresolved: HashMap<String, Vec<String>> = HashMap::new();
 
     for conn_name in connection_names {
         if let Some(user_val) = extract_user_field(project_content, conn_name) {
             for key in extract_all_template_keys(&user_val) {
-                if !existing_keys.contains(&key) {
+                if !users.contains_key(&key) {
                     unresolved
                         .entry(key.clone())
                         .or_default()
@@ -459,14 +433,45 @@ mod tests {
         s
     }
 
+    fn empty_users() -> HashMap<String, UserEntry> {
+        HashMap::new()
+    }
+
+    fn users_with(entries: &[(&str, &str)]) -> HashMap<String, UserEntry> {
+        entries
+            .iter()
+            .map(|(k, v)| {
+                (
+                    k.to_string(),
+                    UserEntry {
+                        key: k.to_string(),
+                        value: v.to_string(),
+                        layer: crate::config::Layer::User,
+                        source_path: PathBuf::from("/tmp/test.yaml"),
+                        shadowed: false,
+                    },
+                )
+            })
+            .collect()
+    }
+
     fn run_with_stdin(
         project_file: &Path,
         target_file: &Path,
         stdin_data: &str,
     ) -> (Result<()>, String) {
+        run_with_stdin_users(project_file, target_file, &empty_users(), stdin_data)
+    }
+
+    fn run_with_stdin_users(
+        project_file: &Path,
+        target_file: &Path,
+        users: &HashMap<String, UserEntry>,
+        stdin_data: &str,
+    ) -> (Result<()>, String) {
         let mut input = stdin_data.as_bytes();
         let mut output = Vec::<u8>::new();
-        let result = run_impl(project_file, target_file, &mut input, &mut output);
+        let result = run_impl(project_file, target_file, users, &mut input, &mut output);
         (result, String::from_utf8(output).unwrap())
     }
 
@@ -691,7 +696,7 @@ mod tests {
     }
 
     #[test]
-    fn test_all_keys_resolved_skips_prompting() {
+    fn test_all_keys_resolved_in_users_map_skips_prompting() {
         let dir = TempDir::new().unwrap();
         let project_file = dir.path().join("project.yaml");
         let target_file = dir.path().join("target.yaml");
@@ -702,17 +707,90 @@ mod tests {
             "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: \"test\"\n",
         ).unwrap();
 
-        // Pre-populate target with the t1user entry already resolved.
-        fs::write(&target_file, "version: 1\n\nusers:\n  t1user: \"alice\"\n").unwrap();
+        // t1user is defined in the merged users map (e.g. from user layer).
+        let users = users_with(&[("t1user", "alice")]);
 
         // No stdin data needed — no prompting should occur.
-        let (result, output) = run_with_stdin(&project_file, &target_file, "");
+        let (result, output) = run_with_stdin_users(&project_file, &target_file, &users, "");
         result.unwrap();
 
         // No "Missing user variable" prompt should appear.
         assert!(
             !output.contains("Missing user variable"),
-            "should not prompt when key is already resolved, got: {output}"
+            "should not prompt when key is resolved in cfg.users, got: {output}"
+        );
+    }
+
+    #[test]
+    fn test_project_file_users_block_resolves_without_prompt() {
+        let dir = TempDir::new().unwrap();
+        let project_file = dir.path().join("project.yaml");
+        let target_file = dir.path().join("target.yaml");
+
+        // Project config with a ${t1user} template AND t1user in users: block.
+        fs::write(
+            &project_file,
+            "version: 1\n\nusers:\n  t1user: alice\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: \"test\"\n",
+        ).unwrap();
+
+        // The merged users map includes t1user from the project layer.
+        let users = users_with(&[("t1user", "alice")]);
+
+        // No stdin data needed — no prompting should occur.
+        let (result, output) = run_with_stdin_users(&project_file, &target_file, &users, "");
+        result.unwrap();
+
+        assert!(
+            !output.contains("Missing user variable"),
+            "should not prompt when key is defined in project file's users block, got: {output}"
+        );
+    }
+
+    #[test]
+    fn test_user_layer_users_resolves_without_prompt() {
+        let dir = TempDir::new().unwrap();
+        let project_file = dir.path().join("project.yaml");
+        let target_file = dir.path().join("target.yaml");
+
+        // Project config with a ${t1user} template (no users: block in project).
+        fs::write(
+            &project_file,
+            "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: \"test\"\n",
+        ).unwrap();
+
+        // t1user is defined in the user layer's users map.
+        let users = users_with(&[("t1user", "alice")]);
+
+        // No stdin data needed — no prompting should occur.
+        let (result, output) = run_with_stdin_users(&project_file, &target_file, &users, "");
+        result.unwrap();
+
+        assert!(
+            !output.contains("Missing user variable"),
+            "should not prompt when key is defined in user layer's users block, got: {output}"
+        );
+    }
+
+    #[test]
+    fn test_undefined_user_key_triggers_prompt() {
+        let dir = TempDir::new().unwrap();
+        let project_file = dir.path().join("project.yaml");
+        let target_file = dir.path().join("target.yaml");
+
+        // Project config with a ${t1user} template.
+        fs::write(
+            &project_file,
+            "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: \"test\"\n",
+        ).unwrap();
+
+        // Empty users map — t1user is not defined anywhere.
+        let (result, output) =
+            run_with_stdin_users(&project_file, &target_file, &empty_users(), "alice\n");
+        result.unwrap();
+
+        assert!(
+            output.contains("Missing user variable '${t1user}' used by: alpha"),
+            "should prompt when key is not defined in any layer, got: {output}"
         );
     }
 
