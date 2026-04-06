@@ -372,7 +372,7 @@ mod tests {
             port: 22,
             auth: Auth::Key {
                 key: "~/.ssh/id_rsa".to_string(),
-                cmd: None,
+                generate_key: None,
             },
             description: String::new(),
             link: None,

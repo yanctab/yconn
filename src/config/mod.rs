@@ -76,12 +76,12 @@ struct RawConn {
 #[serde(tag = "type")]
 pub enum Auth {
     /// Key-based authentication. `key` is the path to the private key file.
-    /// `cmd` is an optional shell command (parsed and stored only — not executed).
+    /// `generate_key` is an optional shell command (parsed and stored only — not executed).
     #[serde(rename = "key")]
     Key {
         key: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        cmd: Option<String>,
+        generate_key: Option<String>,
     },
     /// Password authentication — SSH prompts natively.
     #[serde(rename = "password")]
@@ -92,7 +92,7 @@ pub enum Auth {
     Identity {
         key: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        cmd: Option<String>,
+        generate_key: Option<String>,
     },
 }
 
@@ -114,10 +114,15 @@ impl Auth {
         }
     }
 
-    /// Return the cmd field, if any.
-    pub fn cmd(&self) -> Option<&str> {
+    /// Return the generate_key field, if any.
+    pub fn generate_key(&self) -> Option<&str> {
         match self {
-            Auth::Key { ref cmd, .. } | Auth::Identity { ref cmd, .. } => cmd.as_deref(),
+            Auth::Key {
+                ref generate_key, ..
+            }
+            | Auth::Identity {
+                ref generate_key, ..
+            } => generate_key.as_deref(),
             Auth::Password => None,
         }
     }

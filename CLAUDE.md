@@ -117,7 +117,7 @@ connections:
     auth:
       type: key                       # "key" or "password"
       key: ~/.ssh/prod_deploy_key     # required when type is "key"; inside docker, path is inside container
-      cmd: "vault read ssh/key"       # optional shell command (parsed and stored only)
+      generate_key: "vault read ssh/key"  # optional shell command (parsed and stored only)
     description: "Primary production web server"
     link: https://wiki.internal/servers/prod-web   # optional
 
@@ -166,10 +166,10 @@ execution to an arbitrary Docker image.
 | `host` | yes | Hostname or IP address |
 | `user` | yes | SSH login user |
 | `port` | no | SSH port, defaults to 22 |
-| `auth` | yes | YAML mapping with `type` (required), `key` (required when type=key), and `cmd` (optional) |
+| `auth` | yes | YAML mapping with `type` (required), `key` (required when type=key), and `generate_key` (optional) |
 | `auth.type` | yes | `key` or `password` |
 | `auth.key` | if type=key | Path to private key file (resolved inside container when using Docker) |
-| `auth.cmd` | no | Shell command string (parsed and stored only — not executed in v1) |
+| `auth.generate_key` | no | Shell command string (parsed and stored only — not executed in v1) |
 | `description` | yes | Human-readable description of the connection |
 | `link` | no | URL for further documentation (wiki, runbook, etc.) |
 
