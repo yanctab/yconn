@@ -503,3 +503,39 @@ argument construction is exercised.
 - No tunneling or port-forward management
 - No support for passing passwords programmatically (intentional — avoids process list exposure)
 - No support for Docker Compose or Podman in v1 (consider for v2)
+
+---
+
+## Task Tracking
+
+Active work lives in `TASKS.md` at the repo root. Completed work is archived
+in `HISTORY-TASKS.md` at the repo root.
+
+### Why two files
+
+`TASKS.md` is loaded into the Claude context window during normal work so
+that the agent can see the current backlog, dependencies, and acceptance
+criteria at a glance. Over time this file grows as tasks accumulate, and
+loading the full history alongside the active backlog wastes context and
+slows down planning.
+
+`HISTORY-TASKS.md` exists to keep `TASKS.md` small enough to comfortably
+load into context without also dragging in every previously completed
+task. It is a write-only archive — entries are never edited after they
+land there.
+
+### Archival workflow
+
+When `TASKS.md` grows too large to comfortably load into context:
+
+1. Identify the oldest completed `[x]` entries at the top of `TASKS.md`.
+2. Move them verbatim to the bottom of `HISTORY-TASKS.md`, preserving
+   every sub-bullet (Acceptance, Depends on, Modify, Create, Reuse,
+   Risks) exactly as written.
+3. Delete the moved entries from `TASKS.md`.
+4. Commit the move as a single `docs(tasks):` commit so the history is
+   easy to audit.
+
+No specific line-count threshold triggers archival — it is a judgment
+call based on how readable `TASKS.md` remains and how much context it
+consumes during agent runs.
