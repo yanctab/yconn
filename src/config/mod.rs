@@ -115,6 +115,10 @@ impl Auth {
     }
 
     /// Return the generate_key field, if any.
+    ///
+    /// This returns the raw, unexpanded value as stored in config. For display
+    /// purposes the `${key}` token should be expanded to the connection's
+    /// `auth.key` value — see [`Auth::generate_key_expanded`].
     pub fn generate_key(&self) -> Option<&str> {
         match self {
             Auth::Key {
@@ -125,6 +129,27 @@ impl Auth {
             } => generate_key.as_deref(),
             Auth::Password => None,
         }
+    }
+
+    /// Return `generate_key` with the literal `${key}` token expanded to the
+    /// connection's `auth.key` value.
+    ///
+    /// Expansion rules:
+    /// - Every occurrence of the literal `${key}` is replaced with the value
+    ///   returned by [`Auth::key`].
+    /// - For variants without a key ([`Auth::Password`]), `${key}` expands to
+    ///   an empty string. This invariant must hold if a future variant adds
+    ///   `generate_key` without a `key` field.
+    /// - Other `${...}` tokens are passed through unchanged — only the exact
+    ///   literal `${key}` sequence is expanded.
+    ///
+    /// The stored enum data is not mutated: this is a view, not a rewrite.
+    /// `--dump` serialises the raw enum fields and therefore still emits the
+    /// original unexpanded value.
+    pub fn generate_key_expanded(&self) -> Option<String> {
+        let raw = self.generate_key()?;
+        let key_value = self.key().unwrap_or("");
+        Some(raw.replace("${key}", key_value))
     }
 }
 
@@ -996,6 +1021,97 @@ mod tests {
         group: Option<&str>,
     ) -> LoadedConfig {
         load_impl(cwd, group, group.is_some(), user_dir, system_dir).unwrap()
+    }
+
+    // ── Auth::generate_key_expanded ─────────────────────────────────────────
+
+    #[test]
+    fn test_generate_key_expanded_key_auth_replaces_placeholder() {
+        let auth = Auth::Key {
+            key: "~/.ssh/foo".to_string(),
+            generate_key: Some("vault read ssh/foo > ${key}".to_string()),
+        };
+        assert_eq!(
+            auth.generate_key_expanded().as_deref(),
+            Some("vault read ssh/foo > ~/.ssh/foo")
+        );
+    }
+
+    #[test]
+    fn test_generate_key_expanded_identity_auth_replaces_placeholder() {
+        let auth = Auth::Identity {
+            key: "~/.ssh/gitlab_key".to_string(),
+            generate_key: Some("op read secret > ${key}".to_string()),
+        };
+        assert_eq!(
+            auth.generate_key_expanded().as_deref(),
+            Some("op read secret > ~/.ssh/gitlab_key")
+        );
+    }
+
+    #[test]
+    fn test_generate_key_expanded_password_auth_returns_none() {
+        // Auth::Password has no generate_key field — the expanded accessor
+        // must return None (not Some("")) because there is nothing to expand.
+        let auth = Auth::Password;
+        assert_eq!(auth.generate_key_expanded(), None);
+    }
+
+    #[test]
+    fn test_generate_key_expanded_without_placeholder_returns_verbatim() {
+        let auth = Auth::Key {
+            key: "~/.ssh/foo".to_string(),
+            generate_key: Some("vault read ssh/foo".to_string()),
+        };
+        assert_eq!(
+            auth.generate_key_expanded().as_deref(),
+            Some("vault read ssh/foo")
+        );
+    }
+
+    #[test]
+    fn test_generate_key_expanded_multiple_occurrences_all_replaced() {
+        let auth = Auth::Key {
+            key: "~/.ssh/id".to_string(),
+            generate_key: Some("cp ${key}.src ${key}".to_string()),
+        };
+        assert_eq!(
+            auth.generate_key_expanded().as_deref(),
+            Some("cp ~/.ssh/id.src ~/.ssh/id")
+        );
+    }
+
+    #[test]
+    fn test_generate_key_expanded_leaves_other_tokens_unchanged() {
+        let auth = Auth::Key {
+            key: "~/.ssh/id".to_string(),
+            generate_key: Some("echo ${other} > ${key}".to_string()),
+        };
+        // Only ${key} is expanded — ${other} is passed through verbatim.
+        assert_eq!(
+            auth.generate_key_expanded().as_deref(),
+            Some("echo ${other} > ~/.ssh/id")
+        );
+    }
+
+    #[test]
+    fn test_generate_key_expanded_none_field_returns_none() {
+        let auth = Auth::Key {
+            key: "~/.ssh/foo".to_string(),
+            generate_key: None,
+        };
+        assert_eq!(auth.generate_key_expanded(), None);
+    }
+
+    #[test]
+    fn test_generate_key_raw_accessor_preserves_placeholder() {
+        // The raw accessor must NOT expand ${key} — it is used by callers that
+        // need the original config value (e.g. --dump serialisation).
+        let auth = Auth::Key {
+            key: "~/.ssh/foo".to_string(),
+            generate_key: Some("vault read ssh/foo > ${key}".to_string()),
+        };
+        assert_eq!(auth.generate_key(), Some("vault read ssh/foo > ${key}"));
     }
 
     // ── upward walk ───────────────────────────────────────────────────────────

@@ -45,6 +45,9 @@ connections:
   # --- Key auth with generate_key field ----------------------------------------
   # `auth.generate_key` stores a shell command hint (parsed and stored only, not executed).
   # Useful for documenting how to fetch or rotate the key.
+  # The literal token `${key}` in `generate_key` is expanded to the value of
+  # `auth.key` when surfaced via `yconn show` — here it becomes
+  # `~/.ssh/bastion_key`. `yconn show --dump` preserves the raw `${key}`.
   bastion:
     host: bastion.example.com
     user: ec2-user
@@ -52,7 +55,7 @@ connections:
     auth:
       type: key
       key: ~/.ssh/bastion_key
-      generate_key: "vault read -field=private_key secret/ssh/bastion > ~/.ssh/bastion_key"
+      generate_key: "vault read -field=private_key secret/ssh/bastion > ${key}"
     description: "Bastion host — jump point for internal network"
     link: https://wiki.internal/servers/bastion
 
@@ -81,13 +84,15 @@ connections:
 
   # --- Identity auth with generate_key -----------------------------------------
   # Like key auth, identity auth also supports generate_key for key provisioning hints.
+  # `${key}` is expanded to the value of `auth.key` at display time, so the
+  # single source of truth for the key path is the `key:` field above.
   gitlab:
     host: gitlab.example.com
     user: git
     auth:
       type: identity
       key: ~/.ssh/gitlab_key
-      generate_key: "op read 'op://DevOps/GitLab SSH/private key' > ~/.ssh/gitlab_key"
+      generate_key: "op read 'op://DevOps/GitLab SSH/private key' > ${key}"
     description: "GitLab — identity-only for internal git operations"
 
   # --- Minimal connection (no port, no link, no group) ------------------------
