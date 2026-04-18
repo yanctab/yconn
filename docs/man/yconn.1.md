@@ -109,6 +109,26 @@ keys to be pre-baked into an image rather than distributed to developer machines
 : Print the active group name and the resolved config file paths for each layer,
   indicating which files were found.
 
+**keys list**
+: List every connection that has an `auth.generate_key` command configured.
+  Columns are NAME, KEY (the `auth.key` path), GENERATE_KEY (the
+  `${key}`-expanded command) and SOURCE (layer and file). Connections without
+  `generate_key` — including all password-auth entries and key/identity
+  entries without a `generate_key` field — are omitted from the output.
+
+**keys setup** [*NAME*]
+: Generate SSH key material by executing `auth.generate_key` via `sh -c`.
+  With no positional argument, every connection with `generate_key`
+  configured is processed in turn — connections without `generate_key` are
+  silently skipped, and a failure in one entry does not abort the loop. When
+  *NAME* is supplied, only that connection is processed: if *NAME* does not
+  exist or has no `generate_key` configured, the command aborts non-zero
+  without executing anything. When the target key file already exists on
+  disk, setup prints a skip notice and does not execute the command. A
+  non-zero exit code from the `generate_key` command fails that entry; in
+  iterate-all mode subsequent entries are still attempted, in named mode
+  the command exits non-zero.
+
 **ssh-config install**
 : Read all active connections and write one `Host` block per connection to
   `~/.ssh/yconn-connections`. Updates `~/.ssh/config` idempotently by prepending
@@ -374,6 +394,14 @@ yconn ssh-config print --skip-user
 yconn ssh-config uninstall
 yconn ssh-config disable
 yconn ssh-config enable
+```
+
+Audit and generate SSH key material:
+
+```
+yconn keys list
+yconn keys setup               # generate keys for every qualifying connection
+yconn keys setup bastion       # generate the key for a single connection
 ```
 
 Manage user key/value entries:

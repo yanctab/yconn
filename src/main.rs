@@ -11,8 +11,8 @@ mod group;
 mod security;
 
 use cli::{
-    Cli, Commands, ConnectionCommands, GroupCommands, SshConfigArgs, SshConfigCommands,
-    UserCommands,
+    Cli, Commands, ConnectionCommands, GroupCommands, KeyCommands, SshConfigArgs,
+    SshConfigCommands, UserCommands,
 };
 
 fn main() -> Result<()> {
@@ -82,6 +82,15 @@ fn main() -> Result<()> {
         Commands::Install { layer } => {
             let cfg = load_and_warn(&renderer, verbose)?;
             commands::install::run(&cfg, layer)
+        }
+        Commands::Keys { subcommand } => {
+            let cfg = load_and_warn(&renderer, verbose)?;
+            match subcommand {
+                KeyCommands::List => commands::keys::list(&cfg, &renderer),
+                KeyCommands::Setup { name } => {
+                    commands::keys::setup(&cfg, &renderer, name.as_deref())
+                }
+            }
         }
         Commands::SshConfig(SshConfigArgs { subcommand }) => {
             let home = dirs::home_dir()

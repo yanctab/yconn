@@ -2177,3 +2177,146 @@ fn identity_add_wizard_round_trip() {
         "identity auth type must appear in list, got: {stdout}"
     );
 }
+
+// ─── yconn keys list | setup ─────────────────────────────────────────────────
+
+/// `yconn keys list` prints one row per connection that has a `generate_key`
+/// configured; connections without `generate_key` are omitted.
+#[test]
+fn keys_list_filters_to_generate_key_connections() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        concat!(
+            "connections:\n",
+            "  with-gen:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: ~/.ssh/deploy_key\n",
+            "      generate_key: \"echo k > ${key}\"\n",
+            "    description: Has gen key\n",
+            "  without-gen:\n",
+            "    host: 10.0.0.2\n",
+            "    user: admin\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: ~/.ssh/admin_key\n",
+            "    description: No gen key\n",
+            "  pwauth:\n",
+            "    host: 10.0.0.3\n",
+            "    user: dbadmin\n",
+            "    auth:\n",
+            "      type: password\n",
+            "    description: Password\n",
+        ),
+    );
+
+    let out = env.run(&["keys", "list"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("with-gen"),
+        "with-gen connection must appear in keys list, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("without-gen"),
+        "without-gen must NOT appear in keys list, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("pwauth"),
+        "pwauth must NOT appear in keys list, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("NAME") && stdout.contains("GENERATE_KEY"),
+        "keys list must render header row, got: {stdout}"
+    );
+}
+
+/// `yconn keys setup` (no arg) runs `generate_key` for every qualifying
+/// connection and silently skips connections without `generate_key`.
+/// `yconn keys setup <name>` re-runs generation for a named connection after
+/// the key has been deleted.
+#[test]
+fn keys_setup_all_and_named_create_key_files() {
+    let env = TestEnv::new();
+
+    let key_path = env.cwd.path().join("generated_key");
+    let key_path_str = key_path.to_string_lossy();
+
+    let yaml = format!(
+        concat!(
+            "connections:\n",
+            "  gen-conn:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key_path}\n",
+            "      generate_key: \"printf %s hello > ${{key}}\"\n",
+            "    description: Has gen key\n",
+            "  pwauth:\n",
+            "    host: 10.0.0.2\n",
+            "    user: dbadmin\n",
+            "    auth:\n",
+            "      type: password\n",
+            "    description: No gen key\n",
+        ),
+        key_path = key_path_str,
+    );
+    env.write_user_config("connections", &yaml);
+
+    // Sanity: file does not exist yet.
+    assert!(!key_path.exists(), "key file must not exist before setup");
+
+    // Iterate-all form: creates the key file for gen-conn, silently skips
+    // pwauth.
+    let out = env.run(&["keys", "setup"]);
+    TestEnv::assert_ok(&out);
+    let contents = fs::read_to_string(&key_path).expect("key file must be created by setup");
+    assert_eq!(
+        contents, "hello",
+        "key file content must match the echoed value"
+    );
+
+    // Delete and re-run via named form to verify the single-connection path.
+    fs::remove_file(&key_path).unwrap();
+    let out = env.run(&["keys", "setup", "gen-conn"]);
+    TestEnv::assert_ok(&out);
+    let contents = fs::read_to_string(&key_path).expect("key file must be recreated");
+    assert_eq!(contents, "hello");
+}
+
+/// `yconn keys setup <name>` on a connection with no `generate_key` aborts
+/// non-zero and prints a clear error message.
+#[test]
+fn keys_setup_named_without_generate_key_fails() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        concat!(
+            "connections:\n",
+            "  pwauth:\n",
+            "    host: 10.0.0.1\n",
+            "    user: dbadmin\n",
+            "    auth:\n",
+            "      type: password\n",
+            "    description: No gen key\n",
+        ),
+    );
+
+    let out = env.run(&["keys", "setup", "pwauth"]);
+    assert!(
+        !out.status.success(),
+        "keys setup on no-generate_key connection must exit non-zero"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("has no generate_key configured"),
+        "stderr must mention 'has no generate_key configured', got: {stderr}"
+    );
+}
