@@ -143,7 +143,7 @@ pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str) -> Result<()> {
         port: conn.port,
         auth: conn.auth.type_label().to_string(),
         key: conn.auth.key().map(str::to_string),
-        generate_key: conn.auth.generate_key().map(str::to_string),
+        generate_key: conn.auth.generate_key_expanded(),
         description: conn.description.clone(),
         link: conn.link.clone(),
         source_label: conn.layer.label().to_string(),
@@ -439,5 +439,58 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user.path()), empty.path());
         run(&cfg, &no_color(), "db").unwrap();
+    }
+
+    /// Showing a connection whose `auth.generate_key` contains `${key}` must
+    /// populate `ConnectionDetail.generate_key` with the expanded key path
+    /// (no unexpanded `${key}` token left behind).
+    #[test]
+    fn test_show_generate_key_expands_key_placeholder() {
+        use crate::display::ConnectionDetail;
+
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            "connections:\n  bastion:\n    host: 10.0.0.1\n    user: ec2-user\n    auth:\n      type: key\n      key: ~/.ssh/foo\n      generate_key: \"vault read -field=private_key secret/ssh/foo > ${key}\"\n    description: Bastion\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+
+        // Build the ConnectionDetail the same way `run` does — this is what
+        // flows into the renderer and ultimately the user-facing output.
+        let conn = cfg.find_with_wildcard("bastion").unwrap();
+        let detail = ConnectionDetail {
+            name: conn.name.clone(),
+            host: conn.host.clone(),
+            user: conn.user.clone(),
+            port: conn.port,
+            auth: conn.auth.type_label().to_string(),
+            key: conn.auth.key().map(str::to_string),
+            generate_key: conn.auth.generate_key_expanded(),
+            description: conn.description.clone(),
+            link: conn.link.clone(),
+            source_label: conn.layer.label().to_string(),
+            source_path: conn.source_path.display().to_string(),
+        };
+
+        let rendered = detail.generate_key.as_deref().unwrap();
+        assert_eq!(
+            rendered, "vault read -field=private_key secret/ssh/foo > ~/.ssh/foo",
+            "expected ${{key}} expanded to the literal key path"
+        );
+        assert!(
+            rendered.contains("~/.ssh/foo"),
+            "expected expanded key path present: {rendered}"
+        );
+        assert!(
+            !rendered.contains("${key}"),
+            "expected no raw ${{key}} token in generate_key: {rendered}"
+        );
+
+        // Also ensure `run` itself succeeds end-to-end on this config.
+        run(&cfg, &no_color(), "bastion").unwrap();
     }
 }

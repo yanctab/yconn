@@ -117,7 +117,7 @@ connections:
     auth:
       type: key                       # "key" or "password"
       key: ~/.ssh/prod_deploy_key     # required when type is "key"; inside docker, path is inside container
-      generate_key: "vault read ssh/key"  # optional shell command (parsed and stored only)
+      generate_key: "vault read -field=private_key secret/ssh/prod > ${key}"  # optional; ${key} is expanded to auth.key when displayed
     description: "Primary production web server"
     link: https://wiki.internal/servers/prod-web   # optional
 
@@ -169,7 +169,7 @@ execution to an arbitrary Docker image.
 | `auth` | yes | YAML mapping with `type` (required), `key` (required when type=key), and `generate_key` (optional) |
 | `auth.type` | yes | `key` or `password` |
 | `auth.key` | if type=key | Path to private key file (resolved inside container when using Docker) |
-| `auth.generate_key` | no | Shell command string (parsed and stored only — not executed in v1) |
+| `auth.generate_key` | no | Shell command string (parsed and stored only — not executed in v1). The literal token `${key}` is expanded to `auth.key` when surfaced by `yconn show` (empty string when no key is defined). `yconn show --dump` preserves the raw unexpanded value. |
 | `description` | yes | Human-readable description of the connection |
 | `link` | no | URL for further documentation (wiki, runbook, etc.) |
 
