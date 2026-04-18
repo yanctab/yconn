@@ -79,6 +79,8 @@ yconn groups use work
 | `yconn connections remove <name>` | Remove a connection (prompts for layer if ambiguous) |
 | `yconn connections init` | Scaffold a `<group>.yaml` in `.yconn/` in the current directory |
 | `yconn install` | Copy project connections into the user (or system) layer |
+| `yconn keys list` | List connections that have a `generate_key` command configured |
+| `yconn keys setup [<name>]` | Run `generate_key` for one connection or every qualifying connection |
 | `yconn config` | Show active config files, their paths, and Docker status |
 | `yconn groups list` | Show all groups found across all layers |
 | `yconn groups use <name>` | Set the active group |

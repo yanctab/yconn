@@ -8,6 +8,7 @@ pub mod edit;
 pub mod group;
 pub mod init;
 pub mod install;
+pub mod keys;
 pub mod list;
 pub mod remove;
 pub mod show;

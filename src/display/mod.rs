@@ -68,6 +68,15 @@ pub struct UserRow {
     pub shadowed: bool,
 }
 
+/// A row in the `yconn keys list` output table.
+pub struct KeyRow {
+    pub name: String,
+    pub key: String,
+    pub generate_key: String,
+    pub layer: String,
+    pub source_path: String,
+}
+
 /// A row in the `yconn groups list` output table.
 pub struct GroupRow {
     pub name: String,
@@ -361,6 +370,54 @@ impl Renderer {
         out
     }
 
+    // ── keys list ─────────────────────────────────────────────────────────────
+
+    fn render_keys_list(&self, rows: &[KeyRow]) -> String {
+        const HEADERS: [&str; 4] = ["NAME", "KEY", "GENERATE_KEY", "SOURCE"];
+        const GAP: &str = "   ";
+
+        let mut col = [
+            HEADERS[0].len(),
+            HEADERS[1].len(),
+            HEADERS[2].len(),
+            0usize, // source — not padded (last col)
+        ];
+        for row in rows {
+            col[0] = col[0].max(row.name.len());
+            col[1] = col[1].max(row.key.len());
+            col[2] = col[2].max(row.generate_key.len());
+        }
+
+        let header_cells: Vec<String> = vec![
+            pad(HEADERS[0], col[0]),
+            pad(HEADERS[1], col[1]),
+            pad(HEADERS[2], col[2]),
+            HEADERS[3].to_string(),
+        ];
+        let header_plain = header_cells.join(GAP);
+        let separator: String = "─".repeat(header_plain.len());
+
+        let mut out = String::new();
+        out.push_str(&self.maybe_bold(&header_plain));
+        out.push('\n');
+        out.push_str(&separator);
+        out.push('\n');
+
+        for row in rows {
+            let source = format!("{} ({})", row.layer, row.source_path);
+            let cells: Vec<String> = vec![
+                pad(&row.name, col[0]),
+                pad(&row.key, col[1]),
+                pad(&row.generate_key, col[2]),
+                source,
+            ];
+            out.push_str(&cells.join(GAP));
+            out.push('\n');
+        }
+
+        out
+    }
+
     // ── group list ────────────────────────────────────────────────────────────
 
     fn render_group_list(&self, groups: &[GroupRow]) -> String {
@@ -466,6 +523,17 @@ impl Renderer {
     /// Print the group list table (`yconn groups list`).
     pub fn group_list(&self, groups: &[GroupRow]) {
         print!("{}", self.render_group_list(groups));
+    }
+
+    /// Print the keys list table (`yconn keys list`).
+    pub fn keys_list(&self, rows: &[KeyRow]) {
+        print!("{}", self.render_keys_list(rows));
+    }
+
+    /// Print a single plain line of output (used by command handlers that
+    /// need to emit progress or status messages).
+    pub fn print_line(&self, msg: &str) {
+        println!("{msg}");
     }
 
     /// Print the group current status (`yconn groups current`).

@@ -145,6 +145,12 @@ pub enum Commands {
         layer: Option<LayerArg>,
     },
 
+    /// Audit and generate SSH keys via connection generate_key commands
+    Keys {
+        #[command(subcommand)]
+        subcommand: KeyCommands,
+    },
+
     /// Manage SSH config integration (install, print, uninstall, disable, enable)
     SshConfig(SshConfigArgs),
 
@@ -179,6 +185,20 @@ pub enum UserCommands {
         /// Target a specific config layer
         #[arg(long, value_name = "LAYER")]
         layer: Option<LayerArg>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum KeyCommands {
+    /// List connections that have a `generate_key` command configured
+    List,
+
+    /// Run the `generate_key` command for one connection (by name) or all
+    /// qualifying connections (no argument)
+    Setup {
+        /// Name of the connection to set up. When omitted, iterates every
+        /// connection that has a `generate_key` configured.
+        name: Option<String>,
     },
 }
 
