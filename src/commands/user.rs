@@ -142,7 +142,7 @@ fn layer_arg_to_layer(layer: Option<LayerArg>) -> Layer {
 
 pub(crate) fn layer_path(layer: Layer) -> Result<PathBuf> {
     match layer {
-        Layer::System => Ok(PathBuf::from("/etc/yconn")),
+        Layer::System => Ok(crate::config::system_config_dir()),
         Layer::User => {
             let base = dirs::config_dir().context("cannot determine user config directory")?;
             Ok(base.join("yconn"))

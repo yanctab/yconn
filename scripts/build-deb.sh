@@ -18,10 +18,6 @@ if [[ -f "docs/man/${BINARY}.1" ]]; then
     gzip -c "docs/man/${BINARY}.1" > "dist/${PKG}/usr/share/man/man1/${BINARY}.1.gz"
 fi
 
-if [[ -f "config/connections.yaml" ]]; then
-    cp "config/connections.yaml" "dist/${PKG}/usr/share/doc/${BINARY}/connections.yaml.example"
-fi
-
 sed \
     -e "s/VERSION_PLACEHOLDER/${VERSION}/g" \
     -e "s/BINARY_PLACEHOLDER/${BINARY}/g" \

@@ -458,6 +458,13 @@ yconn connect staging --user user:alice
 `EDITOR`
 : Editor used by **yconn edit**.
 
+`YCONN_SYSTEM_CONFIG_DIR`
+: Override the system-layer config directory. When set, this value replaces
+  the default `/etc/yconn` for both reads (config loading) and writes (e.g.
+  `yconn install --layer system`). Primarily intended for the integration
+  test harness, but also useful for packaged installs that ship system
+  configs in a non-standard location.
+
 # SECURITY
 
 Passwords are never stored in any config file and are never passed as CLI
