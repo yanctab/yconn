@@ -1,6 +1,6 @@
 [package]
 name = "yconn"
-version = "1.13.0"
+version = "1.14.0"
 edition = "2021"
 description = "SSH connection manager for teams and DevOps environments"
 license = "MIT"
