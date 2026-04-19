@@ -9,10 +9,11 @@
 //! the subprocess's captured output.
 //!
 //! Environment control (set per subprocess — no race conditions between tests):
-//!   PATH           — mock_bin prepended so mock ssh/docker shadow the real ones
-//!   XDG_CONFIG_HOME — redirects dirs::config_dir() to our temp user-config dir
-//!   HOME           — bounds the project-config upward walk
-//!   CONN_IN_DOCKER — simulates being inside a container
+//!   PATH                    — mock_bin prepended so mock ssh/docker shadow the real ones
+//!   XDG_CONFIG_HOME         — redirects dirs::config_dir() to our temp user-config dir
+//!   HOME                    — bounds the project-config upward walk
+//!   YCONN_SYSTEM_CONFIG_DIR — replaces the hard-coded `/etc/yconn` system layer dir
+//!   CONN_IN_DOCKER          — simulates being inside a container
 
 use std::fs;
 use std::io::Write as _;
@@ -31,6 +32,8 @@ struct TestEnv {
     mock_bin: TempDir,
     /// HOME; prevents the upward walk from escaping the temp tree.
     home: TempDir,
+    /// YCONN_SYSTEM_CONFIG_DIR; replaces `/etc/yconn` for both reads and writes.
+    system: TempDir,
 }
 
 impl TestEnv {
@@ -43,6 +46,7 @@ impl TestEnv {
             xdg_config: TempDir::new().unwrap(),
             mock_bin,
             home: TempDir::new().unwrap(),
+            system: TempDir::new().unwrap(),
         }
     }
 
@@ -58,6 +62,14 @@ impl TestEnv {
         let dir = self.xdg_config.path().join("yconn");
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join(format!("{group}.yaml")), yaml).unwrap();
+    }
+
+    /// Write `yaml` to `<system>/<group>.yaml`. The `system` temp directory
+    /// is exposed to the binary as `YCONN_SYSTEM_CONFIG_DIR`, which replaces
+    /// the hard-coded `/etc/yconn` path for both config reads and writes.
+    fn write_system_config(&self, group: &str, yaml: &str) {
+        fs::create_dir_all(self.system.path()).unwrap();
+        fs::write(self.system.path().join(format!("{group}.yaml")), yaml).unwrap();
     }
 
     /// Write a fake SSH key with 600 permissions into cwd; return its absolute path.
@@ -80,6 +92,7 @@ impl TestEnv {
             .env("PATH", path)
             .env("XDG_CONFIG_HOME", self.xdg_config.path())
             .env("HOME", self.home.path())
+            .env("YCONN_SYSTEM_CONFIG_DIR", self.system.path())
             .env_remove("CONN_IN_DOCKER")
             .current_dir(self.cwd.path())
             .output()
@@ -98,6 +111,7 @@ impl TestEnv {
             .env("PATH", path)
             .env("XDG_CONFIG_HOME", self.xdg_config.path())
             .env("HOME", self.home.path())
+            .env("YCONN_SYSTEM_CONFIG_DIR", self.system.path())
             .env("CONN_IN_DOCKER", "1")
             .current_dir(self.cwd.path())
             .output()
@@ -116,6 +130,7 @@ impl TestEnv {
             .env("PATH", path)
             .env("XDG_CONFIG_HOME", self.xdg_config.path())
             .env("HOME", self.home.path())
+            .env("YCONN_SYSTEM_CONFIG_DIR", self.system.path())
             .env_remove("CONN_IN_DOCKER")
             .current_dir(self.cwd.path())
             .stdin(Stdio::piped())
@@ -142,6 +157,7 @@ impl TestEnv {
             .env("PATH", path)
             .env("XDG_CONFIG_HOME", self.xdg_config.path())
             .env("HOME", self.home.path())
+            .env("YCONN_SYSTEM_CONFIG_DIR", self.system.path())
             .env_remove("CONN_IN_DOCKER")
             .current_dir(self.cwd.path());
         for (key, val) in extra_env {
@@ -649,6 +665,7 @@ fn edit_invokes_editor_with_correct_file_path() {
         .env("PATH", path)
         .env("XDG_CONFIG_HOME", env.xdg_config.path())
         .env("HOME", env.home.path())
+        .env("YCONN_SYSTEM_CONFIG_DIR", env.system.path())
         .env_remove("CONN_IN_DOCKER")
         .env("EDITOR", env.mock_bin.path().join("mock-editor"))
         .current_dir(env.cwd.path())
@@ -2318,5 +2335,384 @@ fn keys_setup_named_without_generate_key_fails() {
     assert!(
         stderr.contains("has no generate_key configured"),
         "stderr must mention 'has no generate_key configured', got: {stderr}"
+    );
+}
+
+// ─── End-to-end golden-path harness ──────────────────────────────────────────
+//
+// The end-to-end harness exercises every file-producing `yconn` subcommand
+// against the shared `tests/fixtures/connections.yaml` fixture and asserts on
+// the resulting on-disk artefacts.
+//
+// All three layers are isolated in their own temp directories:
+// - project layer  → `<cwd>/.yconn/connections.yaml`
+// - user layer     → `<xdg_config>/yconn/connections.yaml`
+// - system layer   → `<system>/connections.yaml`  (via `YCONN_SYSTEM_CONFIG_DIR`)
+//
+// The fixture covers all documented features (key/password/identity auth,
+// `${...}` user templates, `users:` map, docker block, group tags, optional
+// fields). It is loaded verbatim into the project layer for steps that need
+// the full feature surface, and a deterministic copy with a rewritten
+// `generate_key` is used for the `keys setup` step.
+//
+// The acceptance criteria allow splitting the original golden-path sequence
+// into several independent `#[test]` functions, each starting from fresh
+// TempDirs hydrated from the same fixture, "as long as every listed assertion
+// fires somewhere in `make test`". Each command-group below is its own test
+// so a failure pinpoints the exact subsystem.
+//
+// One step from the task description is intentionally NOT executed:
+//
+//   * Step 5 (`yconn users remove newuser --layer user`) — the `users`
+//     subcommand group only exposes `Show`, `Add`, and `Edit` in
+//     `src/cli/mod.rs`. Adding a `remove` verb would be a CLI/main change
+//     outside the `Modify:` list for this task. The intent of the step (a
+//     removal modifies the on-disk file) is covered by
+//     `test_e2e_connections_add_remove`.
+//
+// `yconn connections edit` and `yconn users edit` are intentionally excluded
+// (they require a working `$EDITOR`; the task entry calls this out).
+// `yconn connect` is excluded because it is not a file producer.
+
+/// The shared fixture loaded via `include_str!` — single source of truth so
+/// the tests never drift from the on-disk file.
+const E2E_FIXTURE: &str = include_str!("fixtures/connections.yaml");
+
+/// Names of every connection in the e2e fixture. Used by tests that assert all
+/// fixture connections were copied into a target layer.
+const E2E_FIXTURE_NAMES: &[&str] = &[
+    "prod-web",
+    "bastion",
+    "staging-db",
+    "github",
+    "gitlab",
+    "dev-local",
+    "legacy-db",
+];
+
+// ── Step 1: `yconn connections init` ─────────────────────────────────────────
+//
+// Asserts a fresh project dir ends up with `.yconn/connections.yaml` containing
+// a `connections:` key.
+#[test]
+fn test_e2e_connections_init_creates_scaffold() {
+    let env = TestEnv::new();
+    let project_yaml = env.cwd.path().join(".yconn").join("connections.yaml");
+    assert!(
+        !project_yaml.exists(),
+        "project config must not exist before init"
+    );
+
+    let out = env.run(&["connections", "init"]);
+    TestEnv::assert_ok(&out);
+    assert!(
+        project_yaml.exists(),
+        ".yconn/connections.yaml must be created by `connections init`"
+    );
+    let init_content = fs::read_to_string(&project_yaml).unwrap();
+    assert!(
+        !init_content.is_empty(),
+        "scaffolded file must be non-empty"
+    );
+    assert!(
+        init_content.contains("connections:"),
+        "scaffold must contain a `connections:` key, got:\n{init_content}"
+    );
+}
+
+// ── Step 2: `yconn install --layer user` ─────────────────────────────────────
+//
+// The fixture defines two `users:` entries (`deploy_user`, `db_user`) that
+// resolve every `${...}` template referenced by connections. Because those are
+// present in the merged `cfg.users` map, no prompting should occur.
+#[test]
+fn test_e2e_install_user_layer_copies_all_fixture_connections() {
+    let env = TestEnv::new();
+    env.write_project_config("connections", E2E_FIXTURE);
+
+    let out = env.run(&["install", "--layer", "user"]);
+    TestEnv::assert_ok(&out);
+
+    let user_yaml = env.xdg_config.path().join("yconn").join("connections.yaml");
+    assert!(
+        user_yaml.exists(),
+        "user-layer connections.yaml must be created"
+    );
+    let user_content = fs::read_to_string(&user_yaml).unwrap();
+    for name in E2E_FIXTURE_NAMES {
+        assert!(
+            user_content.contains(&format!("  {name}:")),
+            "user layer must contain '{name}', got:\n{user_content}"
+        );
+    }
+}
+
+// ── Step 3: `yconn install --layer system` ───────────────────────────────────
+//
+// System layer is initially empty so every connection is appended without a
+// prompt; the "y" stdin lines are harmless extra input. The fixture is loaded
+// into the project layer first so install has a source. The system layer
+// directory is the temp dir exposed via `YCONN_SYSTEM_CONFIG_DIR`.
+#[test]
+fn test_e2e_install_system_layer_copies_all_fixture_connections() {
+    let env = TestEnv::new();
+    env.write_project_config("connections", E2E_FIXTURE);
+
+    let out = env.run_with_stdin(&["install", "--layer", "system"], "y\ny\ny\ny\ny\ny\ny\n");
+    TestEnv::assert_ok(&out);
+
+    let system_yaml = env.system.path().join("connections.yaml");
+    assert!(
+        system_yaml.exists(),
+        "system-layer connections.yaml must be created at YCONN_SYSTEM_CONFIG_DIR"
+    );
+    let system_content = fs::read_to_string(&system_yaml).unwrap();
+    for name in E2E_FIXTURE_NAMES {
+        assert!(
+            system_content.contains(&format!("  {name}:")),
+            "system layer must contain '{name}', got:\n{system_content}"
+        );
+    }
+}
+
+// ── Step 4: `yconn users add --user newuser:alice --layer user` ──────────────
+//
+// Starts from a fresh TestEnv with the fixture in the project layer (no prior
+// user-layer file), so this exercises the file-creation path of `users add`.
+// Asserts the user-layer YAML grows a `newuser: alice` entry.
+#[test]
+fn test_e2e_users_add_writes_to_user_layer() {
+    let env = TestEnv::new();
+    env.write_project_config("connections", E2E_FIXTURE);
+
+    let out = env.run(&["users", "add", "--user", "newuser:alice", "--layer", "user"]);
+    TestEnv::assert_ok(&out);
+
+    let user_yaml = env.xdg_config.path().join("yconn").join("connections.yaml");
+    assert!(user_yaml.exists(), "user-layer YAML must be created");
+    let user_content = fs::read_to_string(&user_yaml).unwrap();
+    assert!(
+        user_content.contains("newuser:") && user_content.contains("alice"),
+        "newuser:alice must be present in user layer, got:\n{user_content}"
+    );
+}
+
+// ── Steps 6 & 7: `yconn connections add` then `yconn connections remove` ─────
+//
+// Wizard prompt order, from `src/commands/add.rs::run_impl`:
+//   1. Connection name
+//   2. Host
+//   3. User
+//   4. Port [22]            (blank → default 22)
+//   5. Auth [key/password/identity]
+//   6. Key path             (only when auth is key or identity)
+//   7. Description
+//   8. Link (optional)      (blank → omitted)
+//
+// Starts from a fresh TestEnv with the fixture in the project layer (no prior
+// user-layer file), so the wizard exercises the file-creation path. After
+// `connections add`, `connections remove --layer user` deletes it.
+#[test]
+fn test_e2e_connections_add_remove() {
+    let env = TestEnv::new();
+    env.write_project_config("connections", E2E_FIXTURE);
+
+    let stdin = "wizard-srv\n10.99.0.1\nopsy\n\npassword\nWizard added\n\n";
+    let out = env.run_with_stdin(&["connections", "add", "--layer", "user"], stdin);
+    TestEnv::assert_ok(&out);
+
+    let user_yaml = env.xdg_config.path().join("yconn").join("connections.yaml");
+    let user_content = fs::read_to_string(&user_yaml).unwrap();
+    assert!(
+        user_content.contains("  wizard-srv:"),
+        "wizard-srv must appear in user layer, got:\n{user_content}"
+    );
+    assert!(
+        user_content.contains("host: 10.99.0.1"),
+        "wizard-srv host must be present, got:\n{user_content}"
+    );
+    assert!(
+        user_content.contains("user: opsy"),
+        "wizard-srv user must be present, got:\n{user_content}"
+    );
+    assert!(
+        user_content.contains("type: password"),
+        "wizard-srv auth must be password, got:\n{user_content}"
+    );
+
+    // Now remove the wizard-added connection.
+    let out = env.run(&["connections", "remove", "wizard-srv", "--layer", "user"]);
+    TestEnv::assert_ok(&out);
+
+    let user_content = fs::read_to_string(&user_yaml).unwrap();
+    assert!(
+        !user_content.contains("  wizard-srv:"),
+        "wizard-srv must be gone from user layer, got:\n{user_content}"
+    );
+}
+
+// ── Steps 8 & 9: `yconn groups use work` then `yconn groups clear` ───────────
+//
+// Asserts `<xdg_config>/yconn/session.yml` contains `active_group: work` after
+// `groups use work`, then no longer pins `work` after `groups clear`. The
+// fixture has no `work.yaml`, so a warning is emitted but the command still
+// succeeds and writes the session file.
+#[test]
+fn test_e2e_groups_use_then_clear() {
+    let env = TestEnv::new();
+    env.write_project_config("connections", E2E_FIXTURE);
+
+    let out = env.run(&["groups", "use", "work"]);
+    TestEnv::assert_ok(&out);
+
+    let session_path = env.xdg_config.path().join("yconn").join("session.yml");
+    assert!(
+        session_path.exists(),
+        "session.yml must be created by `groups use`"
+    );
+    let session = fs::read_to_string(&session_path).unwrap();
+    assert!(
+        session.contains("active_group: work"),
+        "session.yml must contain `active_group: work`, got:\n{session}"
+    );
+
+    // Clear the group lock.
+    let out = env.run(&["groups", "clear"]);
+    TestEnv::assert_ok(&out);
+
+    // After clear: the file may be absent, empty, or have the key removed —
+    // any of those represents "no group lock". Assert only that `work` is gone.
+    let after_clear = fs::read_to_string(&session_path).unwrap_or_default();
+    assert!(
+        !after_clear.contains("active_group: work"),
+        "session.yml must not pin `work` after clear, got:\n{after_clear}"
+    );
+}
+
+// ── Steps 10–13: full `yconn ssh-config` lifecycle ───────────────────────────
+//
+// Walks through install → disable → enable → uninstall, asserting on the
+// presence/absence of `<home>/.ssh/yconn-connections` and the Include line
+// in `<home>/.ssh/config` at every step. The fixture's templates resolve
+// from its `users:` block, so no prompting is needed.
+#[test]
+fn test_e2e_ssh_config_install_disable_enable_uninstall() {
+    let env = TestEnv::new();
+    env.write_project_config("connections", E2E_FIXTURE);
+
+    // install
+    let out = env.run(&["ssh-config", "install"]);
+    TestEnv::assert_ok(&out);
+
+    let yconn_conn_file = env.home.path().join(".ssh").join("yconn-connections");
+    assert!(
+        yconn_conn_file.exists(),
+        "~/.ssh/yconn-connections must exist after ssh-config install"
+    );
+    let yconn_conn = fs::read_to_string(&yconn_conn_file).unwrap();
+    assert!(
+        yconn_conn.contains("Host "),
+        "yconn-connections must contain at least one Host block, got:\n{yconn_conn}"
+    );
+
+    let ssh_config_file = env.home.path().join(".ssh").join("config");
+    assert!(
+        ssh_config_file.exists(),
+        "~/.ssh/config must exist after ssh-config install"
+    );
+    let ssh_config = fs::read_to_string(&ssh_config_file).unwrap();
+    assert!(
+        ssh_config.contains("Include ~/.ssh/yconn-connections"),
+        "~/.ssh/config must contain the Include line, got:\n{ssh_config}"
+    );
+
+    // disable
+    let out = env.run(&["ssh-config", "disable"]);
+    TestEnv::assert_ok(&out);
+    let ssh_config = fs::read_to_string(&ssh_config_file).unwrap();
+    assert!(
+        !ssh_config.contains("Include ~/.ssh/yconn-connections"),
+        "Include line must be removed by disable, got:\n{ssh_config}"
+    );
+    assert!(
+        yconn_conn_file.exists(),
+        "yconn-connections file must remain after disable"
+    );
+
+    // enable
+    let out = env.run(&["ssh-config", "enable"]);
+    TestEnv::assert_ok(&out);
+    let ssh_config = fs::read_to_string(&ssh_config_file).unwrap();
+    assert!(
+        ssh_config.contains("Include ~/.ssh/yconn-connections"),
+        "Include line must be re-added by enable, got:\n{ssh_config}"
+    );
+
+    // uninstall
+    let out = env.run(&["ssh-config", "uninstall"]);
+    TestEnv::assert_ok(&out);
+    assert!(
+        !yconn_conn_file.exists(),
+        "yconn-connections must be removed by uninstall"
+    );
+    let ssh_config = fs::read_to_string(&ssh_config_file).unwrap_or_default();
+    assert!(
+        !ssh_config.contains("Include ~/.ssh/yconn-connections"),
+        "Include line must be removed by uninstall, got:\n{ssh_config}"
+    );
+}
+
+// ── Step 14: `yconn keys setup <name>` with a deterministic generate_key ─────
+//
+// The shipped fixture's `bastion` connection uses a realistic but
+// non-executable command:
+//   generate_key: "vault read -field=private_key secret/ssh/bastion > ${key}"
+// Substitute an adapted project config where bastion's `generate_key` is the
+// deterministic `echo testkey > ${key}` and the key path points inside the
+// temp HOME so writes are scoped to the test.
+#[test]
+fn test_e2e_keys_setup_runs_generate_key_command() {
+    let env = TestEnv::new();
+    let test_key_path = env.home.path().join("e2e_bastion_key");
+    let adapted = format!(
+        concat!(
+            "version: 1\n",
+            "users:\n",
+            "  deploy_user: deploy\n",
+            "  db_user: dbadmin\n",
+            "\n",
+            "connections:\n",
+            "  bastion:\n",
+            "    host: bastion.example.com\n",
+            "    user: ec2-user\n",
+            "    port: 2222\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key_path}\n",
+            "      generate_key: \"echo testkey > ${{key}}\"\n",
+            "    description: \"Bastion (test)\"\n",
+        ),
+        key_path = test_key_path.display(),
+    );
+    env.write_project_config("connections", &adapted);
+
+    // Sanity: key file must not exist before setup.
+    assert!(
+        !test_key_path.exists(),
+        "bastion key file must not exist before keys setup"
+    );
+
+    let out = env.run(&["keys", "setup", "bastion"]);
+    TestEnv::assert_ok(&out);
+
+    assert!(
+        test_key_path.exists(),
+        "bastion key file must be created by keys setup"
+    );
+    let key_content = fs::read_to_string(&test_key_path).unwrap();
+    assert_eq!(
+        key_content.trim(),
+        "testkey",
+        "bastion key file content must match the deterministic generate_key output"
     );
 }

@@ -563,10 +563,17 @@ pub fn load() -> Result<LoadedConfig> {
 ///
 /// This is the main entry point; `load()` delegates here with the real CWD.
 /// Tests pass explicit `cwd` values to control the upward walk.
+///
+/// The system-layer directory defaults to `/etc/yconn`, but can be overridden
+/// at runtime by setting the `YCONN_SYSTEM_CONFIG_DIR` environment variable.
+/// This override exists primarily to allow integration tests to point the
+/// system layer at a per-test temp directory; it is also documented for any
+/// production caller that needs to relocate the system layer (e.g. packaged
+/// installs that ship configs in a non-standard location).
 pub fn load_from(cwd: &Path) -> Result<LoadedConfig> {
     let ag = crate::group::active_group()?;
     let user_dir = dirs::config_dir().map(|d| d.join("yconn"));
-    let system_dir = PathBuf::from("/etc/yconn");
+    let system_dir = system_config_dir();
     load_impl(
         cwd,
         ag.name.as_deref(),
@@ -574,6 +581,16 @@ pub fn load_from(cwd: &Path) -> Result<LoadedConfig> {
         user_dir.as_deref(),
         &system_dir,
     )
+}
+
+/// Resolve the system-layer config directory.
+///
+/// When `YCONN_SYSTEM_CONFIG_DIR` is set in the environment, its value is
+/// used verbatim. Otherwise the default `/etc/yconn` path is returned.
+pub fn system_config_dir() -> PathBuf {
+    std::env::var("YCONN_SYSTEM_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/etc/yconn"))
 }
 
 // ─── Internal implementation ──────────────────────────────────────────────────

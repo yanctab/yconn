@@ -51,7 +51,7 @@ pub fn run(cfg: &LoadedConfig, layer: Option<LayerArg>) -> Result<()> {
 
 fn layer_path(layer: Layer) -> Result<PathBuf> {
     match layer {
-        Layer::System => Ok(PathBuf::from("/etc/yconn/connections.yaml")),
+        Layer::System => Ok(crate::config::system_config_dir().join("connections.yaml")),
         Layer::User => {
             let base = dirs::config_dir().context("cannot determine user config directory")?;
             Ok(base.join("yconn").join("connections.yaml"))

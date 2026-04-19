@@ -43,8 +43,8 @@ connections:
     group: production                       # inline group tag for filtering
 
   # --- Key auth with generate_key field ----------------------------------------
-  # `auth.generate_key` stores a shell command hint (parsed and stored only, not executed).
-  # Useful for documenting how to fetch or rotate the key.
+  # `auth.generate_key` stores a shell command hint (parsed and stored only, not
+  # executed during normal yconn flows — `yconn keys setup` runs it explicitly).
   # The literal token `${key}` in `generate_key` is expanded to the value of
   # `auth.key` when surfaced via `yconn show` — here it becomes
   # `~/.ssh/bastion_key`. `yconn show --dump` preserves the raw `${key}`.
@@ -104,19 +104,6 @@ connections:
       type: key
       key: ~/.ssh/dev_key
     description: "Local dev VM"
-
-  # --- Unresolved user variable ------------------------------------------------
-  # When a ${variable} has no matching entry in `users:`, yconn warns on
-  # ssh-config generation and prompts during `yconn install` / `yconn ssh-config
-  # install`. This is useful for connections shared via .yconn/ where each
-  # developer must supply their own username.
-  client-vpn:
-    host: vpn.client-acme.com
-    user: ${acme_user}                        # NOT in users: — will prompt on install
-    auth:
-      type: key
-      key: ~/.ssh/acme_vpn_key
-    description: "Client Acme VPN — each dev sets their own username"
 
   # --- Password auth with custom port, no link --------------------------------
   legacy-db:

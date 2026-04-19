@@ -88,6 +88,14 @@ define entries for every group.
 git), checking each parent for a `.yconn/<group>.yaml`, stopping at `$HOME` or filesystem
 root. This means running from deep inside a project tree will find the config at the repo root.
 
+**System layer override (`YCONN_SYSTEM_CONFIG_DIR`):** the system layer directory defaults to
+`/etc/yconn` but can be overridden by setting the `YCONN_SYSTEM_CONFIG_DIR` environment
+variable. When set, its value replaces `/etc/yconn` for both reads (config loading) and writes
+(`yconn install --layer system`, `yconn connections add --layer system`,
+`yconn users add --layer system`). When unset, behavior is unchanged. This override exists
+primarily so the end-to-end functional test harness can isolate the system layer in a temp
+directory; it is also useful for packaged installs that ship configs in a non-standard location.
+
 **Credential policy by layer:**
 - `/etc/yconn/` and `.yconn/` (git-tracked) — must never contain credentials. Host, user, auth
   type, key name references, and docker config only.
