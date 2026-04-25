@@ -2338,6 +2338,115 @@ fn keys_setup_named_without_generate_key_fails() {
     );
 }
 
+/// `yconn keys setup <name>` emits a one-line notice containing the connection
+/// name, source layer label, and absolute source config path immediately before
+/// spawning the generate_key command.
+#[test]
+fn keys_setup_named_emits_layer_path_notice_before_spawn() {
+    let env = TestEnv::new();
+
+    let key_path = env.cwd.path().join("gen_key");
+    let yaml = format!(
+        concat!(
+            "connections:\n",
+            "  bastion:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key_path}\n",
+            "      generate_key: \"printf %s ok > ${{key}}\"\n",
+            "    description: Bastion\n",
+        ),
+        key_path = key_path.display(),
+    );
+    env.write_user_config("connections", &yaml);
+
+    let out = env.run(&["keys", "setup", "bastion"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    // The notice must contain the connection name.
+    assert!(
+        stdout.contains("bastion"),
+        "notice must contain connection name 'bastion', got: {stdout}"
+    );
+    // The notice must contain the source layer label.
+    assert!(
+        stdout.contains("user"),
+        "notice must contain layer label 'user', got: {stdout}"
+    );
+    // The notice must contain the absolute path to the user-layer config file.
+    let config_path = env.xdg_config.path().join("yconn").join("connections.yaml");
+    assert!(
+        stdout.contains(config_path.to_str().unwrap()),
+        "notice must contain absolute config path '{}', got: {stdout}",
+        config_path.display()
+    );
+}
+
+/// `yconn keys setup` (iterate-all) emits a one-line notice once per
+/// qualifying connection, before each spawn, and does not emit a notice for
+/// connections that are silently skipped (no generate_key).
+#[test]
+fn keys_setup_iterate_all_emits_notice_per_connection() {
+    let env = TestEnv::new();
+
+    let key_a = env.cwd.path().join("key_a");
+    let key_b = env.cwd.path().join("key_b");
+    let yaml = format!(
+        concat!(
+            "connections:\n",
+            "  conn-a:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {ka}\n",
+            "      generate_key: \"printf %s a > ${{key}}\"\n",
+            "    description: A\n",
+            "  conn-b:\n",
+            "    host: 10.0.0.2\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {kb}\n",
+            "      generate_key: \"printf %s b > ${{key}}\"\n",
+            "    description: B\n",
+            "  pwauth:\n",
+            "    host: 10.0.0.3\n",
+            "    user: dbadmin\n",
+            "    auth:\n",
+            "      type: password\n",
+            "    description: No gen key — must be silently skipped\n",
+        ),
+        ka = key_a.display(),
+        kb = key_b.display(),
+    );
+    env.write_user_config("connections", &yaml);
+
+    let out = env.run(&["keys", "setup"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    // A notice must appear for each qualifying connection exactly once.
+    assert!(
+        stdout.contains("conn-a"),
+        "notice for conn-a must appear in stdout, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("conn-b"),
+        "notice for conn-b must appear in stdout, got: {stdout}"
+    );
+    // pwauth has no generate_key — no notice must appear for it.
+    assert!(
+        !stdout.contains("pwauth"),
+        "no notice must appear for skipped pwauth connection, got: {stdout}"
+    );
+}
+
 /// `yconn keys setup <name>` end-to-end against a key path whose parent does
 /// not exist on disk: the parent directory is created before the shell command
 /// runs, the key file is written, and no extra output line appears compared to
@@ -2414,17 +2523,38 @@ fn keys_setup_named_creates_missing_parent_and_emits_no_extra_output() {
 
     let stdout_present = String::from_utf8_lossy(&out_present.stdout);
 
-    // Strip the path prefix from each stdout (the only thing that differs
-    // between the two runs is the absolute key path embedded in the
-    // expanded command and "Key written to:" line) so we can compare the
-    // structural output line-for-line.
-    let normalize = |s: &str, key_path: &std::path::Path| -> Vec<String> {
-        let needle = key_path.display().to_string();
-        s.lines().map(|l| l.replace(&needle, "<KEY>")).collect()
-    };
+    // Normalize both runs by replacing temp-dir-specific paths so we can
+    // compare the structural output line-for-line. Two things differ between
+    // the two runs:
+    //   1. The absolute key path embedded in the expanded command and
+    //      "Key written to:" line.
+    //   2. The absolute source config path embedded in the setup notice
+    //      (the notice now includes [layer] and (source_path)).
+    let normalize =
+        |s: &str, key_path: &std::path::Path, config_path: &std::path::Path| -> Vec<String> {
+            let key_needle = key_path.display().to_string();
+            let cfg_needle = config_path.display().to_string();
+            s.lines()
+                .map(|l| {
+                    l.replace(&key_needle, "<KEY>")
+                        .replace(&cfg_needle, "<CFG>")
+                })
+                .collect()
+        };
 
-    let lines_missing = normalize(&stdout_missing, &missing_key);
-    let lines_present = normalize(&stdout_present, &present_key);
+    let missing_config = env_missing
+        .xdg_config
+        .path()
+        .join("yconn")
+        .join("connections.yaml");
+    let present_config = env_present
+        .xdg_config
+        .path()
+        .join("yconn")
+        .join("connections.yaml");
+
+    let lines_missing = normalize(&stdout_missing, &missing_key, &missing_config);
+    let lines_present = normalize(&stdout_present, &present_key, &present_config);
 
     assert_eq!(
         lines_missing, lines_present,

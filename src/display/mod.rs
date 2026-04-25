@@ -418,6 +418,24 @@ impl Renderer {
         out
     }
 
+    // ── keys setup notice ─────────────────────────────────────────────────────
+
+    /// Format the one-line notice emitted before each `generate_key` execution.
+    ///
+    /// The notice always contains the connection name, the source layer label
+    /// (`project`, `user`, or `system`), and the absolute path to the config
+    /// file from which the connection was loaded.
+    ///
+    /// Returns a `String` so callers can inspect the formatted output in tests.
+    pub(crate) fn render_keys_setup_notice(
+        &self,
+        name: &str,
+        layer: &str,
+        source_path: &str,
+    ) -> String {
+        format!("Setting up '{name}' [{layer}] ({source_path})\n")
+    }
+
     // ── group list ────────────────────────────────────────────────────────────
 
     fn render_group_list(&self, groups: &[GroupRow]) -> String {
@@ -528,6 +546,19 @@ impl Renderer {
     /// Print the keys list table (`yconn keys list`).
     pub fn keys_list(&self, rows: &[KeyRow]) {
         print!("{}", self.render_keys_list(rows));
+    }
+
+    /// Print the one-line layer/path notice before a `generate_key` execution.
+    ///
+    /// The notice names the connection, source layer label, and absolute config
+    /// path. It is always emitted (not gated on `--verbose`) and fires exactly
+    /// once per attempted execution, immediately before the shell command is
+    /// spawned.
+    pub fn print_keys_setup_notice(&self, name: &str, layer: &str, source_path: &str) {
+        print!(
+            "{}",
+            self.render_keys_setup_notice(name, layer, source_path)
+        );
     }
 
     /// Print a single plain line of output (used by command handlers that
@@ -870,6 +901,45 @@ mod tests {
         assert!(out.contains("\u{2717} not found"));
         assert!(out.contains("[project]"));
         assert!(out.contains("[system]"));
+    }
+
+    // ── keys setup notice tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_keys_setup_notice_contains_name_layer_and_path() {
+        let notice = r().render_keys_setup_notice(
+            "prod-bastion",
+            "project",
+            "/repo/.yconn/connections.yaml",
+        );
+        assert!(
+            notice.contains("prod-bastion"),
+            "notice must contain connection name, got: {notice}"
+        );
+        assert!(
+            notice.contains("project"),
+            "notice must contain layer label, got: {notice}"
+        );
+        assert!(
+            notice.contains("/repo/.yconn/connections.yaml"),
+            "notice must contain absolute config path, got: {notice}"
+        );
+    }
+
+    #[test]
+    fn test_keys_setup_notice_is_single_line() {
+        let notice = r().render_keys_setup_notice(
+            "prod-bastion",
+            "project",
+            "/repo/.yconn/connections.yaml",
+        );
+        // A single-line notice ends with exactly one newline and has no
+        // embedded newlines before that.
+        let trimmed = notice.trim_end_matches('\n');
+        assert!(
+            !trimmed.contains('\n'),
+            "notice must be a single line, got: {notice}"
+        );
     }
 
     // ── user list tests ────────────────────────────────────────────────────────
