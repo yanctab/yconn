@@ -1198,6 +1198,66 @@ mod tests {
         );
     }
 
+    /// Single-pass: a `${user}` substitution that yields literal `${key}`
+    /// text MUST NOT be expanded again in the same render. The output keeps
+    /// the substituted `${key}` token verbatim.
+    #[test]
+    fn test_generate_key_rendered_single_pass_user_value_containing_key_token() {
+        let auth = Auth::Key {
+            key: "/secret/path".to_string(),
+            generate_key: Some("echo ${user}".to_string()),
+        };
+        // `user` value is the literal text "${key}" — it must appear in the
+        // output verbatim, not expand to "/secret/path".
+        assert_eq!(
+            auth.generate_key_rendered("${key}").as_deref(),
+            Some("echo ${key}"),
+            "substituted text must not be rescanned"
+        );
+    }
+
+    /// Single-pass, opposite order: a `${key}` substitution that yields
+    /// literal `${user}` text MUST NOT be expanded again. The output keeps
+    /// the substituted `${user}` token verbatim.
+    #[test]
+    fn test_generate_key_rendered_single_pass_key_value_containing_user_token() {
+        let auth = Auth::Key {
+            key: "${user}".to_string(),
+            generate_key: Some("write ${key}".to_string()),
+        };
+        assert_eq!(
+            auth.generate_key_rendered("alice").as_deref(),
+            Some("write ${user}"),
+            "substituted text must not be rescanned (opposite order)"
+        );
+    }
+
+    /// A generate_key value with no placeholders is rendered verbatim.
+    #[test]
+    fn test_generate_key_rendered_without_placeholders_returns_verbatim() {
+        let auth = Auth::Key {
+            key: "~/.ssh/foo".to_string(),
+            generate_key: Some("vault read ssh/foo".to_string()),
+        };
+        assert_eq!(
+            auth.generate_key_rendered("alice").as_deref(),
+            Some("vault read ssh/foo")
+        );
+    }
+
+    /// The raw `Auth::generate_key()` accessor must be unaffected by
+    /// rendering — the on-disk source of truth is preserved.
+    #[test]
+    fn test_generate_key_raw_accessor_unchanged_after_rendering() {
+        let raw = "vault read ssh/${user} > ${key}";
+        let auth = Auth::Key {
+            key: "~/.ssh/foo".to_string(),
+            generate_key: Some(raw.to_string()),
+        };
+        let _ = auth.generate_key_rendered("alice");
+        assert_eq!(auth.generate_key(), Some(raw));
+    }
+
     // ── upward walk ───────────────────────────────────────────────────────────
 
     #[test]
