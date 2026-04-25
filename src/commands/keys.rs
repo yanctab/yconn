@@ -528,6 +528,41 @@ mod tests {
         assert_eq!(contents, "hello");
     }
 
+    #[test]
+    fn test_run_setup_iterate_all_creates_parent_per_connection() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+
+        // Two connections, each with `auth.key` under its own non-existent
+        // parent directory. Iterate-all must create both parents and produce
+        // both key files.
+        let alpha_parent = root.path().join("alpha-parent");
+        let beta_parent = root.path().join("beta-parent");
+        let alpha_key = alpha_parent.join("alpha_key");
+        let beta_key = beta_parent.join("beta_key");
+
+        assert!(!alpha_parent.exists());
+        assert!(!beta_parent.exists());
+
+        let cfg_yaml = format!(
+            "connections:\n  alpha:\n    host: 1.1.1.1\n    user: u\n    auth:\n      type: key\n      key: {a}\n      generate_key: \"printf %s a > ${{key}}\"\n    description: a\n  beta:\n    host: 2.2.2.2\n    user: u\n    auth:\n      type: key\n      key: {b}\n      generate_key: \"printf %s b > ${{key}}\"\n    description: b\n",
+            a = alpha_key.display(),
+            b = beta_key.display(),
+        );
+        write_yaml(&yconn, "connections.yaml", &cfg_yaml);
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+
+        run_setup(&cfg, &no_color(), None).unwrap();
+
+        assert!(alpha_parent.is_dir(), "alpha parent must be created");
+        assert!(beta_parent.is_dir(), "beta parent must be created");
+        assert_eq!(fs::read_to_string(&alpha_key).unwrap(), "a");
+        assert_eq!(fs::read_to_string(&beta_key).unwrap(), "b");
+    }
+
     // ── expand_tilde ──────────────────────────────────────────────────────────
 
     #[test]
