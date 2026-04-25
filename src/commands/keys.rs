@@ -600,6 +600,49 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_run_setup_iterate_all_uncreatable_parent_reports_and_continues() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+
+        // alpha's parent path component is an existing file → un-creatable.
+        let blocker = root.path().join("blocker");
+        fs::write(&blocker, "regular file").unwrap();
+        let alpha_key = blocker.join("subdir").join("alpha_key");
+
+        // beta's parent does not exist but is creatable; success expected.
+        let beta_parent = root.path().join("beta-parent");
+        let beta_key = beta_parent.join("beta_key");
+
+        let cfg_yaml = format!(
+            "connections:\n  alpha:\n    host: 1.1.1.1\n    user: u\n    auth:\n      type: key\n      key: {a}\n      generate_key: \"echo unreachable > ${{key}}\"\n    description: a\n  beta:\n    host: 2.2.2.2\n    user: u\n    auth:\n      type: key\n      key: {b}\n      generate_key: \"printf %s done > ${{key}}\"\n    description: b\n",
+            a = alpha_key.display(),
+            b = beta_key.display(),
+        );
+        write_yaml(&yconn, "connections.yaml", &cfg_yaml);
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+
+        // Iterate-all returns Ok; alpha's failure is reported via the
+        // renderer's error channel, beta still succeeds.
+        run_setup(&cfg, &no_color(), None).unwrap();
+
+        assert!(
+            beta_parent.is_dir(),
+            "beta's parent must be created despite alpha's failure"
+        );
+        assert_eq!(
+            fs::read_to_string(&beta_key).expect("beta key must be written"),
+            "done"
+        );
+        assert!(
+            !alpha_key.exists(),
+            "alpha key must not be created when its parent could not be"
+        );
+    }
+
     // ── expand_tilde ──────────────────────────────────────────────────────────
 
     #[test]
