@@ -563,6 +563,43 @@ mod tests {
         assert_eq!(fs::read_to_string(&beta_key).unwrap(), "b");
     }
 
+    #[test]
+    fn test_run_setup_named_uncreatable_parent_returns_error_and_does_not_spawn() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+
+        // A regular file occupies what would otherwise be a parent directory
+        // component, so create_dir_all cannot create the parent for the key.
+        let blocker = root.path().join("blocker");
+        fs::write(&blocker, "i am a file, not a directory").unwrap();
+        let key_path = blocker.join("subdir").join("new_key");
+
+        // Sentinel file the shell command would touch if it ran. Asserting
+        // its absence proves the command was NOT spawned.
+        let sentinel = root.path().join("sentinel");
+        let cfg_yaml = format!(
+            "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: {key}\n      generate_key: \"touch {sentinel}\"\n    description: srv\n",
+            key = key_path.display(),
+            sentinel = sentinel.display(),
+        );
+        write_yaml(&yconn, "connections.yaml", &cfg_yaml);
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+
+        let err = run_setup(&cfg, &no_color(), Some("srv")).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("failed to create parent directory"),
+            "error must surface a clear parent-dir failure, got: {msg}"
+        );
+        assert!(
+            !sentinel.exists(),
+            "shell command must not be spawned when parent-dir creation fails"
+        );
+    }
+
     // ── expand_tilde ──────────────────────────────────────────────────────────
 
     #[test]
