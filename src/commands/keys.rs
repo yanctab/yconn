@@ -10,6 +10,7 @@
 // printing the command that was run and confirmation that the key was
 // written.
 
+use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -141,6 +142,18 @@ fn process_connection(conn: &Connection, renderer: &Renderer) -> Result<()> {
         // Should never happen: caller guarantees generate_key is set.
         bail!("connection '{}' has no generate_key configured", conn.name);
     };
+
+    if let Some(parent) = expanded_path.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            fs::create_dir_all(parent).map_err(|e| {
+                anyhow!(
+                    "failed to create parent directory {} for {}: {e}",
+                    parent.display(),
+                    conn.name
+                )
+            })?;
+        }
+    }
 
     renderer.print_line(&conn.name);
     renderer.print_line(&expanded_cmd);
@@ -477,6 +490,42 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
         list(&cfg, &no_color()).unwrap();
+    }
+
+    // ── parent-directory creation ────────────────────────────────────────────
+
+    #[test]
+    fn test_run_setup_named_creates_missing_parent_directory() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+
+        // Target key path nested under a parent that does not exist yet.
+        let parent = root.path().join("nested").join("dir");
+        let key_path = parent.join("new_key");
+        assert!(
+            !parent.exists(),
+            "test precondition: parent dir must not exist"
+        );
+
+        let cfg_yaml = format!(
+            "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: {}\n      generate_key: \"printf %s hello > ${{key}}\"\n    description: srv\n",
+            key_path.display()
+        );
+        write_yaml(&yconn, "connections.yaml", &cfg_yaml);
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+
+        run_setup(&cfg, &no_color(), Some("srv")).unwrap();
+
+        assert!(
+            parent.is_dir(),
+            "parent directory must be created before the shell command runs"
+        );
+        let contents = fs::read_to_string(&key_path)
+            .expect("key file must be written into the newly-created parent");
+        assert_eq!(contents, "hello");
     }
 
     // ── expand_tilde ──────────────────────────────────────────────────────────
