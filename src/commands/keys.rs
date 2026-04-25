@@ -158,7 +158,11 @@ fn process_connection(conn: &Connection, renderer: &Renderer) -> Result<()> {
         }
     }
 
-    renderer.print_line(&conn.name);
+    renderer.print_keys_setup_notice(
+        &conn.name,
+        conn.layer.label(),
+        &conn.source_path.display().to_string(),
+    );
     renderer.print_line(&expanded_cmd);
 
     let status = Command::new("sh")
