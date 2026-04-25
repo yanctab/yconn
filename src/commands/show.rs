@@ -448,6 +448,32 @@ mod tests {
         run(&cfg, &no_color(), "db").unwrap();
     }
 
+    /// `yconn show --dump` emits the raw on-disk `generate_key` value
+    /// verbatim — both `${key}` and `${user}` must be preserved in the YAML
+    /// output (no rendering applied at the dump layer).
+    #[test]
+    fn test_dump_preserves_raw_user_and_key_placeholders() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            "connections:\n  bastion:\n    host: 10.0.0.1\n    user: ec2-user\n    auth:\n      type: key\n      key: ~/.ssh/foo\n      generate_key: \"vault read ssh/${user} > ${key}\"\n    description: Bastion\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        let yaml = build_dump_yaml(&cfg).unwrap();
+        assert!(
+            yaml.contains("vault read ssh/${user} > ${key}"),
+            "dump output must preserve raw ${{user}} and ${{key}} placeholders verbatim, got:\n{yaml}"
+        );
+        assert!(
+            !yaml.contains("ec2-user > ~/.ssh/foo"),
+            "dump output must not expand placeholders, got:\n{yaml}"
+        );
+    }
+
     /// Showing a connection whose `auth.generate_key` contains both
     /// `${user}` and `${key}` must populate `ConnectionDetail.generate_key`
     /// with both placeholders expanded — the user-facing show output must
