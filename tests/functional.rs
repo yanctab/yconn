@@ -2338,6 +2338,102 @@ fn keys_setup_named_without_generate_key_fails() {
     );
 }
 
+/// `yconn keys setup <name>` end-to-end against a key path whose parent does
+/// not exist on disk: the parent directory is created before the shell command
+/// runs, the key file is written, and no extra output line appears compared to
+/// the pre-existing-parent case (criterion 5: a pre-existing parent produces
+/// no extra output line).
+#[test]
+fn keys_setup_named_creates_missing_parent_and_emits_no_extra_output() {
+    // Run 1: parent does not exist — must be created on demand.
+    let env_missing = TestEnv::new();
+    let missing_parent = env_missing.cwd.path().join("nested").join("parent");
+    let missing_key = missing_parent.join("generated_key");
+    let yaml_missing = format!(
+        concat!(
+            "connections:\n",
+            "  gen-conn:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key_path}\n",
+            "      generate_key: \"printf %s hello > ${{key}}\"\n",
+            "    description: Has gen key\n",
+        ),
+        key_path = missing_key.display(),
+    );
+    env_missing.write_user_config("connections", &yaml_missing);
+
+    assert!(
+        !missing_parent.exists(),
+        "test precondition: parent dir must not exist"
+    );
+
+    let out_missing = env_missing.run(&["keys", "setup", "gen-conn"]);
+    TestEnv::assert_ok(&out_missing);
+
+    assert!(
+        missing_parent.is_dir(),
+        "parent directory must be created end-to-end"
+    );
+    assert_eq!(
+        fs::read_to_string(&missing_key).expect("key file must be written"),
+        "hello"
+    );
+
+    let stdout_missing = String::from_utf8_lossy(&out_missing.stdout);
+
+    // Run 2: parent already exists — the same connection setup with the
+    // parent pre-created. Output must match the missing-parent run line-for-
+    // line, proving no extra "creating directory" notice was printed in
+    // either case.
+    let env_present = TestEnv::new();
+    let present_parent = env_present.cwd.path().join("nested").join("parent");
+    let present_key = present_parent.join("generated_key");
+    fs::create_dir_all(&present_parent).unwrap();
+
+    let yaml_present = format!(
+        concat!(
+            "connections:\n",
+            "  gen-conn:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key_path}\n",
+            "      generate_key: \"printf %s hello > ${{key}}\"\n",
+            "    description: Has gen key\n",
+        ),
+        key_path = present_key.display(),
+    );
+    env_present.write_user_config("connections", &yaml_present);
+
+    let out_present = env_present.run(&["keys", "setup", "gen-conn"]);
+    TestEnv::assert_ok(&out_present);
+
+    let stdout_present = String::from_utf8_lossy(&out_present.stdout);
+
+    // Strip the path prefix from each stdout (the only thing that differs
+    // between the two runs is the absolute key path embedded in the
+    // expanded command and "Key written to:" line) so we can compare the
+    // structural output line-for-line.
+    let normalize = |s: &str, key_path: &std::path::Path| -> Vec<String> {
+        let needle = key_path.display().to_string();
+        s.lines().map(|l| l.replace(&needle, "<KEY>")).collect()
+    };
+
+    let lines_missing = normalize(&stdout_missing, &missing_key);
+    let lines_present = normalize(&stdout_present, &present_key);
+
+    assert_eq!(
+        lines_missing, lines_present,
+        "pre-existing parent must produce no extra output line; \
+         missing-parent stdout was: {stdout_missing:?}, \
+         pre-existing-parent stdout was: {stdout_present:?}",
+    );
+}
+
 // ─── End-to-end golden-path harness ──────────────────────────────────────────
 //
 // The end-to-end harness exercises every file-producing `yconn` subcommand
