@@ -5,8 +5,15 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use serde::Serialize;
 
-use crate::config::{Auth, LoadedConfig};
+use crate::config::{Auth, Connection, LoadedConfig};
 use crate::display::{ConnectionDetail, Renderer};
+
+/// Render `generate_key` for a connection with both `${key}` and `${user}`
+/// placeholders expanded in a single pass. Returns `None` when the connection
+/// has no `generate_key` configured.
+fn render_generate_key(conn: &Connection) -> Option<String> {
+    conn.auth.generate_key_rendered(&conn.user)
+}
 
 // ─── Dump serialisation types ─────────────────────────────────────────────────
 
@@ -143,7 +150,7 @@ pub fn run(cfg: &LoadedConfig, renderer: &Renderer, name: &str) -> Result<()> {
         port: conn.port,
         auth: conn.auth.type_label().to_string(),
         key: conn.auth.key().map(str::to_string),
-        generate_key: conn.auth.generate_key_expanded(),
+        generate_key: render_generate_key(&conn),
         description: conn.description.clone(),
         link: conn.link.clone(),
         source_label: conn.layer.label().to_string(),
@@ -439,6 +446,81 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), Some(user.path()), empty.path());
         run(&cfg, &no_color(), "db").unwrap();
+    }
+
+    /// `yconn show --dump` emits the raw on-disk `generate_key` value
+    /// verbatim — both `${key}` and `${user}` must be preserved in the YAML
+    /// output (no rendering applied at the dump layer).
+    #[test]
+    fn test_dump_preserves_raw_user_and_key_placeholders() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            "connections:\n  bastion:\n    host: 10.0.0.1\n    user: ec2-user\n    auth:\n      type: key\n      key: ~/.ssh/foo\n      generate_key: \"vault read ssh/${user} > ${key}\"\n    description: Bastion\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        let yaml = build_dump_yaml(&cfg).unwrap();
+        assert!(
+            yaml.contains("vault read ssh/${user} > ${key}"),
+            "dump output must preserve raw ${{user}} and ${{key}} placeholders verbatim, got:\n{yaml}"
+        );
+        assert!(
+            !yaml.contains("ec2-user > ~/.ssh/foo"),
+            "dump output must not expand placeholders, got:\n{yaml}"
+        );
+    }
+
+    /// Showing a connection whose `auth.generate_key` contains both
+    /// `${user}` and `${key}` must populate `ConnectionDetail.generate_key`
+    /// with both placeholders expanded — the user-facing show output must
+    /// not leak either raw token.
+    #[test]
+    fn test_show_generate_key_expands_user_and_key_placeholders() {
+        use crate::display::ConnectionDetail;
+
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            "connections:\n  bastion:\n    host: 10.0.0.1\n    user: ec2-user\n    auth:\n      type: key\n      key: ~/.ssh/foo\n      generate_key: \"vault read -field=private_key secret/users/${user} > ${key}\"\n    description: Bastion\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+
+        let conn = cfg.find_with_wildcard("bastion").unwrap();
+        let detail = ConnectionDetail {
+            name: conn.name.clone(),
+            host: conn.host.clone(),
+            user: conn.user.clone(),
+            port: conn.port,
+            auth: conn.auth.type_label().to_string(),
+            key: conn.auth.key().map(str::to_string),
+            generate_key: render_generate_key(&conn),
+            description: conn.description.clone(),
+            link: conn.link.clone(),
+            source_label: conn.layer.label().to_string(),
+            source_path: conn.source_path.display().to_string(),
+        };
+
+        let rendered = detail.generate_key.as_deref().unwrap();
+        assert_eq!(
+            rendered, "vault read -field=private_key secret/users/ec2-user > ~/.ssh/foo",
+            "expected both ${{user}} and ${{key}} expanded in show output"
+        );
+        assert!(
+            !rendered.contains("${user}"),
+            "expected no raw ${{user}} token in generate_key: {rendered}"
+        );
+        assert!(
+            !rendered.contains("${key}"),
+            "expected no raw ${{key}} token in generate_key: {rendered}"
+        );
     }
 
     /// Showing a connection whose `auth.generate_key` contains `${key}` must

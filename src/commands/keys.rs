@@ -58,7 +58,10 @@ pub(crate) fn build_key_rows(cfg: &LoadedConfig) -> Vec<KeyRow> {
             // generate_key field) — skip defensively.
             continue;
         };
-        let generate_key = conn.auth.generate_key_expanded().unwrap_or_default();
+        let generate_key = conn
+            .auth
+            .generate_key_rendered(&conn.user)
+            .unwrap_or_default();
         rows.push(KeyRow {
             name: conn.name.clone(),
             key: key_path.to_string(),
@@ -284,6 +287,26 @@ mod tests {
         let cfg = load(cwd.path(), None, empty.path());
         let rows = build_key_rows(&cfg);
         assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn test_build_key_rows_expands_user_and_key_placeholders() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            "connections:\n  bastion:\n    host: 10.0.0.1\n    user: ec2-user\n    auth:\n      type: key\n      key: ~/.ssh/bastion_key\n      generate_key: \"vault read ssh/${user} > ${key}\"\n    description: Bastion\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        let rows = build_key_rows(&cfg);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].generate_key, "vault read ssh/ec2-user > ~/.ssh/bastion_key",
+            "GENERATE_KEY column must expand both ${{user}} and ${{key}}"
+        );
     }
 
     #[test]
