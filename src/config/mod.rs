@@ -151,6 +151,58 @@ impl Auth {
         let key_value = self.key().unwrap_or("");
         Some(raw.replace("${key}", key_value))
     }
+
+    /// Return `generate_key` with both `${key}` and `${user}` expanded in a
+    /// single pass.
+    ///
+    /// Single-pass means substituted text is never re-scanned: if a
+    /// substitution introduces text that itself looks like a placeholder
+    /// (e.g. a `user` value of `${key}`), it is left in the output verbatim.
+    ///
+    /// Unknown `${...}` tokens are passed through unchanged.
+    /// `${key}` expands to the value of [`Auth::key`] (empty string when
+    /// absent). The raw enum data is not mutated; this is a view.
+    pub fn generate_key_rendered(&self, user: &str) -> Option<String> {
+        let raw = self.generate_key()?;
+        let key_value = self.key().unwrap_or("");
+        Some(render_placeholders(raw, key_value, user))
+    }
+}
+
+/// Single-pass placeholder expander. Walks `input` left-to-right and replaces
+/// each occurrence of `${key}` with `key_value` and `${user}` with `user_value`.
+/// Substituted text is appended directly to the output and is not rescanned,
+/// so a user value containing `${key}` is preserved verbatim.
+fn render_placeholders(input: &str, key_value: &str, user_value: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
+            if let Some(end) = input[i + 2..].find('}') {
+                let token = &input[i + 2..i + 2 + end];
+                match token {
+                    "key" => {
+                        out.push_str(key_value);
+                        i += 2 + end + 1;
+                        continue;
+                    }
+                    "user" => {
+                        out.push_str(user_value);
+                        i += 2 + end + 1;
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // Push the next char as-is. Use char_indices semantics to keep utf-8
+        // intact even though placeholders are ASCII-only.
+        let ch = input[i..].chars().next().expect("non-empty remainder");
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
 }
 
 fn default_port() -> u16 {
@@ -1129,6 +1181,21 @@ mod tests {
             generate_key: Some("vault read ssh/foo > ${key}".to_string()),
         };
         assert_eq!(auth.generate_key(), Some("vault read ssh/foo > ${key}"));
+    }
+
+    // ── Auth::generate_key_rendered (issue #83) ─────────────────────────────
+
+    /// Both `${key}` and `${user}` are expanded together in a single render.
+    #[test]
+    fn test_generate_key_rendered_expands_both_placeholders() {
+        let auth = Auth::Key {
+            key: "~/.ssh/foo".to_string(),
+            generate_key: Some("vault read ssh/${user} > ${key}".to_string()),
+        };
+        assert_eq!(
+            auth.generate_key_rendered("alice").as_deref(),
+            Some("vault read ssh/alice > ~/.ssh/foo")
+        );
     }
 
     // ── upward walk ───────────────────────────────────────────────────────────
