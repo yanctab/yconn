@@ -24,11 +24,11 @@ fn main() -> Result<()> {
     let renderer = display::Renderer::new(true);
 
     match cli.command {
-        Commands::List { group } => {
-            let cfg = load_and_warn(&renderer, verbose)?;
-            commands::list::run(&cfg, &renderer, all, group.as_deref())
-        }
         Commands::Connections { subcommand } => match subcommand {
+            ConnectionCommands::List { group } => {
+                let cfg = load_and_warn(&renderer, verbose)?;
+                commands::list::run(&cfg, &renderer, all, group.as_deref())
+            }
             ConnectionCommands::Show { name, dump } => {
                 let cfg = load_and_warn(&renderer, verbose)?;
                 if dump {
@@ -127,7 +127,7 @@ fn main() -> Result<()> {
             }
         }
         Commands::Users { subcommand } => match subcommand {
-            UserCommands::Show => {
+            UserCommands::List => {
                 let cfg = load_and_warn(&renderer, verbose)?;
                 commands::user::show(&cfg, &renderer)
             }
