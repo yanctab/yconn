@@ -141,7 +141,7 @@ fn process_connection(conn: &Connection, renderer: &Renderer) -> Result<()> {
         return Ok(());
     }
 
-    let Some(expanded_cmd) = conn.auth.generate_key_expanded() else {
+    let Some(expanded_cmd) = conn.auth.generate_key_rendered(&conn.user) else {
         // Should never happen: caller guarantees generate_key is set.
         bail!("connection '{}' has no generate_key configured", conn.name);
     };
