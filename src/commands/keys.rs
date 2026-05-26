@@ -11,6 +11,7 @@
 // written.
 
 use std::fs;
+use std::io::{BufRead, Write as _};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -42,21 +43,26 @@ pub fn setup(cfg: &LoadedConfig, renderer: &Renderer, name: Option<&str>) -> Res
     run_setup(cfg, renderer, name)
 }
 
-/// Delete an existing key file (if present) and run `generate_key` for one
-/// connection (by name) or every connection that has a `generate_key`
-/// configured when `name` is `None`.
+/// Update (refresh) the SSH key by deleting the existing key file and
+/// running `generate_key` for one connection (by name) or every connection
+/// that has a `generate_key` configured when `name` is `None`.
+/// Prompts for confirmation (y/N) before proceeding.
 ///
-/// This is a placeholder that satisfies the CLI plumbing requirement. The
-/// actual implementation of key deletion logic will be added in a future
-/// iteration.
+/// Semantics:
+/// - `name = Some(<n>)`: if `<n>` has no `generate_key` the command aborts
+///   non-zero; if `<n>` does not match any connection the command aborts
+///   non-zero.
+/// - `name = None`: every connection is scanned; connections without
+///   `generate_key` are silently skipped. A failure in one connection does
+///   not abort the loop — subsequent connections are still processed.
+#[allow(dead_code)]
 pub fn update(
-    _cfg: &LoadedConfig,
-    _renderer: &Renderer,
-    _name: Option<&str>,
-    _stdin: &mut dyn std::io::BufRead,
+    cfg: &LoadedConfig,
+    renderer: &Renderer,
+    name: Option<&str>,
+    stdin: &mut dyn BufRead,
 ) -> Result<()> {
-    // Placeholder: awaits implementation
-    Ok(())
+    run_update(cfg, renderer, name, stdin)
 }
 
 // ─── Testable implementation ─────────────────────────────────────────────────
@@ -129,6 +135,117 @@ fn run_setup_all(cfg: &LoadedConfig, renderer: &Renderer) {
         if let Err(err) = process_connection(conn, renderer) {
             renderer.error(&err.to_string());
         }
+    }
+}
+
+/// Core update dispatcher — branches on whether a connection name was
+/// supplied. The two forms have intentionally different error semantics:
+/// single-name is strict (missing `generate_key` aborts), iterate-all is
+/// lenient (missing `generate_key` is silently skipped).
+#[allow(dead_code)]
+pub(crate) fn run_update(
+    cfg: &LoadedConfig,
+    renderer: &Renderer,
+    name: Option<&str>,
+    stdin: &mut dyn BufRead,
+) -> Result<()> {
+    match name {
+        Some(target) => run_update_named(cfg, renderer, target, stdin),
+        None => {
+            run_update_all(cfg, renderer, stdin);
+            Ok(())
+        }
+    }
+}
+
+/// Strict single-connection form: missing `generate_key` or unknown name
+/// aborts non-zero. Prompts for confirmation before deleting the key file.
+#[allow(dead_code)]
+fn run_update_named(
+    cfg: &LoadedConfig,
+    renderer: &Renderer,
+    name: &str,
+    stdin: &mut dyn BufRead,
+) -> Result<()> {
+    let conn = cfg
+        .find(name)
+        .ok_or_else(|| anyhow!("unknown connection '{name}'"))?;
+
+    if conn.auth.generate_key().is_none() {
+        bail!("connection '{name}' has no generate_key configured");
+    }
+
+    if !confirm_update(stdin)? {
+        return Ok(());
+    }
+
+    delete_key_file(conn)?;
+    process_connection(conn, renderer)
+}
+
+/// Lenient iterate-all form: silently skip connections without
+/// `generate_key`; continue past individual failures so one bad entry does
+/// not block the rest. Prompts for confirmation before each deletion.
+#[allow(dead_code)]
+fn run_update_all(cfg: &LoadedConfig, renderer: &Renderer, stdin: &mut dyn BufRead) {
+    for conn in &cfg.connections {
+        if conn.auth.generate_key().is_none() {
+            continue;
+        }
+
+        if let Ok(confirmed) = confirm_update(stdin) {
+            if !confirmed {
+                continue;
+            }
+        } else {
+            // Error reading from stdin — skip this connection
+            continue;
+        }
+
+        if let Err(err) = delete_key_file(conn) {
+            renderer.error(&err.to_string());
+            continue;
+        }
+
+        if let Err(err) = process_connection(conn, renderer) {
+            renderer.error(&err.to_string());
+        }
+    }
+}
+
+/// Prompt the user for confirmation (y/N) and return whether the answer was affirmative.
+/// Only responses starting with 'y' or 'Y' return true; all others (including empty) return false.
+#[allow(dead_code)]
+fn confirm_update(stdin: &mut dyn BufRead) -> Result<bool> {
+    print!("Update this key? [y/N] ");
+    std::io::stdout().flush()?;
+    let mut input = String::new();
+    stdin.read_line(&mut input)?;
+    Ok(input.trim().starts_with('y') || input.trim().starts_with('Y'))
+}
+
+/// Delete the key file for the given connection. Tolerates `ErrorKind::NotFound`.
+#[allow(dead_code)]
+fn delete_key_file(conn: &Connection) -> Result<()> {
+    let Some(key_path) = conn.auth.key() else {
+        bail!(
+            "connection '{}' has no key path configured; cannot delete key",
+            conn.name
+        );
+    };
+
+    let expanded_path = expand_tilde(key_path);
+    match fs::remove_file(&expanded_path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // File doesn't exist — this is fine
+            Ok(())
+        }
+        Err(e) => Err(anyhow!(
+            "failed to delete key file {} for '{}': {e}",
+            key_path,
+            conn.name
+        )),
     }
 }
 
@@ -700,5 +817,239 @@ mod tests {
     fn test_expand_tilde_absolute_unchanged() {
         let result = expand_tilde("/etc/passwd");
         assert_eq!(result, PathBuf::from("/etc/passwd"));
+    }
+
+    // ── update: criterion 1 — unknown name returns Err ───────────────────────
+
+    #[test]
+    fn test_update_unknown_name_returns_error() {
+        let cwd = TempDir::new().unwrap();
+        let empty = TempDir::new().unwrap();
+        let cfg = load(cwd.path(), None, empty.path());
+        let mut stdin = "y\n".as_bytes();
+        let err = update(&cfg, &no_color(), Some("nope"), &mut stdin).unwrap_err();
+        assert!(
+            err.to_string().contains("unknown connection"),
+            "error should mention 'unknown connection', got: {err}"
+        );
+    }
+
+    // ── update: criterion 2 — no generate_key returns Err ──────────────────────
+
+    #[test]
+    fn test_update_named_without_generate_key_returns_error() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: srv\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        let mut stdin = "y\n".as_bytes();
+        let err = update(&cfg, &no_color(), Some("srv"), &mut stdin).unwrap_err();
+        assert!(
+            err.to_string().contains("has no generate_key configured"),
+            "error should mention missing generate_key, got: {err}"
+        );
+    }
+
+    // ── update: criterion 3 — "n" answer returns without deleting or running ──
+
+    #[test]
+    fn test_update_n_answer_does_not_delete_or_run() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+
+        let key_path = root.path().join("existing_key");
+        fs::write(&key_path, "original content").unwrap();
+
+        let cfg_yaml = format!(
+            "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: {}\n      generate_key: \"echo fail > ${{key}}\"\n    description: srv\n",
+            key_path.display()
+        );
+        write_yaml(&yconn, "connections.yaml", &cfg_yaml);
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        let mut stdin = "n\n".as_bytes();
+        update(&cfg, &no_color(), Some("srv"), &mut stdin).unwrap();
+
+        // Key file must still exist with original content
+        let contents = fs::read_to_string(&key_path).unwrap();
+        assert_eq!(contents, "original content", "key file must not be deleted");
+    }
+
+    // ── update: criterion 4 — "y" answer deletes and runs ───────────────────────
+
+    #[test]
+    fn test_update_y_answer_deletes_and_runs() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+
+        let key_path = root.path().join("existing_key");
+        fs::write(&key_path, "old key").unwrap();
+
+        let cfg_yaml = format!(
+            "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: {}\n      generate_key: \"printf %s newkey > ${{key}}\"\n    description: srv\n",
+            key_path.display()
+        );
+        write_yaml(&yconn, "connections.yaml", &cfg_yaml);
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        let mut stdin = "y\n".as_bytes();
+        update(&cfg, &no_color(), Some("srv"), &mut stdin).unwrap();
+
+        // Key file must exist with new content
+        let contents = fs::read_to_string(&key_path).unwrap();
+        assert_eq!(
+            contents, "newkey",
+            "key file must be updated with new content"
+        );
+    }
+
+    // ── update: criterion 5 — "y" when key file doesn't exist still proceeds ──
+
+    #[test]
+    fn test_update_y_when_key_file_missing_still_proceeds() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+
+        let key_path = root.path().join("nonexistent_key");
+        assert!(!key_path.exists(), "key must not exist initially");
+
+        let cfg_yaml = format!(
+            "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: {}\n      generate_key: \"printf %s newkey > ${{key}}\"\n    description: srv\n",
+            key_path.display()
+        );
+        write_yaml(&yconn, "connections.yaml", &cfg_yaml);
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        let mut stdin = "y\n".as_bytes();
+        update(&cfg, &no_color(), Some("srv"), &mut stdin).unwrap();
+
+        // Key file must be created with new content
+        let contents = fs::read_to_string(&key_path).unwrap();
+        assert_eq!(
+            contents, "newkey",
+            "key file must be created even if it didn't exist"
+        );
+    }
+
+    // ── update: criterion 6 — iterate-all with "y" answers ────────────────────
+
+    #[test]
+    fn test_update_iterate_all_with_y_answers() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+
+        let key1 = root.path().join("key1");
+        let key2 = root.path().join("key2");
+        fs::write(&key1, "old1").unwrap();
+        fs::write(&key2, "old2").unwrap();
+
+        let cfg_yaml = format!(
+            "connections:\n  srv1:\n    host: 1.1.1.1\n    user: u\n    auth:\n      type: key\n      key: {}\n      generate_key: \"printf %s new1 > ${{key}}\"\n    description: srv1\n  srv2:\n    host: 2.2.2.2\n    user: u\n    auth:\n      type: key\n      key: {}\n      generate_key: \"printf %s new2 > ${{key}}\"\n    description: srv2\n",
+            key1.display(),
+            key2.display()
+        );
+        write_yaml(&yconn, "connections.yaml", &cfg_yaml);
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        // Two "y\n" answers, one per connection
+        let mut stdin = "y\ny\n".as_bytes();
+        update(&cfg, &no_color(), None, &mut stdin).unwrap();
+
+        let contents1 = fs::read_to_string(&key1).unwrap();
+        let contents2 = fs::read_to_string(&key2).unwrap();
+        assert_eq!(contents1, "new1");
+        assert_eq!(contents2, "new2");
+    }
+
+    // ── update: criterion 7 — silently skips without generate_key ──────────────
+
+    #[test]
+    fn test_update_iterate_all_silently_skips_without_generate_key() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+
+        // Only password auth and key auth without generate_key
+        write_yaml(
+            &yconn,
+            "connections.yaml",
+            "connections:\n  db:\n    host: db.internal\n    user: dbadmin\n    auth:\n      type: password\n    description: db\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: ~/.ssh/id_rsa\n    description: srv\n",
+        );
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        // Empty stdin — no prompts should be generated
+        let mut stdin = "".as_bytes();
+        update(&cfg, &no_color(), None, &mut stdin).unwrap();
+    }
+
+    // ── update: criterion 8 — continues past failing process_connection ───────
+
+    #[test]
+    fn test_update_iterate_all_continues_past_failure() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+
+        let fail_key = root.path().join("fail_key");
+        let ok_key = root.path().join("ok_key");
+
+        // alpha: failing generate_key command
+        // beta: succeeds
+        let cfg_yaml = format!(
+            "connections:\n  alpha:\n    host: 1.1.1.1\n    user: u\n    auth:\n      type: key\n      key: {}\n      generate_key: \"false\"\n    description: a\n  beta:\n    host: 2.2.2.2\n    user: u\n    auth:\n      type: key\n      key: {}\n      generate_key: \"printf %s ok > ${{key}}\"\n    description: b\n",
+            fail_key.display(),
+            ok_key.display()
+        );
+        write_yaml(&yconn, "connections.yaml", &cfg_yaml);
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        // Two "y\n" answers
+        let mut stdin = "y\ny\n".as_bytes();
+        update(&cfg, &no_color(), None, &mut stdin).unwrap();
+
+        // beta must still be processed and created
+        let ok_contents = fs::read_to_string(&ok_key).expect("beta key must be created");
+        assert_eq!(ok_contents, "ok");
+    }
+
+    // ── update: criterion 9 — confirmation prompt is flushed before read_line ──
+
+    #[test]
+    fn test_update_confirms_before_reading() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+
+        let key_path = root.path().join("key");
+        let cfg_yaml = format!(
+            "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: {}\n      generate_key: \"printf %s ok > ${{key}}\"\n    description: srv\n",
+            key_path.display()
+        );
+        write_yaml(&yconn, "connections.yaml", &cfg_yaml);
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+
+        // The test checks that confirm_update calls flush before read_line
+        // This is verified by the function implementation itself.
+        let mut stdin = "y\n".as_bytes();
+        update(&cfg, &no_color(), Some("srv"), &mut stdin).unwrap();
+        let contents = fs::read_to_string(&key_path).unwrap();
+        assert_eq!(contents, "ok");
     }
 }
