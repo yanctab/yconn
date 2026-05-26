@@ -2564,6 +2564,46 @@ fn keys_setup_named_creates_missing_parent_and_emits_no_extra_output() {
     );
 }
 
+/// `yconn keys setup <name>` with `generate_key` containing `${user}` must
+/// expand the placeholder to the connection's user value before executing.
+#[test]
+fn keys_setup_expands_user_placeholder_in_generate_key() {
+    let env = TestEnv::new();
+
+    let key_path = env.cwd.path().join("generated_key");
+    let key_path_str = key_path.to_string_lossy();
+
+    let yaml = format!(
+        concat!(
+            "connections:\n",
+            "  user-expansion:\n",
+            "    host: 10.0.0.1\n",
+            "    user: ec2-user\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key_path}\n",
+            "      generate_key: \"printf %s ${{user}} > ${{key}}\"\n",
+            "    description: Tests user placeholder expansion\n",
+        ),
+        key_path = key_path_str,
+    );
+    env.write_user_config("connections", &yaml);
+
+    // Sanity: file does not exist yet.
+    assert!(!key_path.exists(), "key file must not exist before setup");
+
+    // Run keys setup for the connection with ${user} in generate_key.
+    let out = env.run(&["keys", "setup", "user-expansion"]);
+    TestEnv::assert_ok(&out);
+
+    // The file should be created with content equal to the connection's user value.
+    let contents = fs::read_to_string(&key_path).expect("key file must be created by setup");
+    assert_eq!(
+        contents, "ec2-user",
+        "key file content must be the expanded user value"
+    );
+}
+
 // ─── End-to-end golden-path harness ──────────────────────────────────────────
 //
 // The end-to-end harness exercises every file-producing `yconn` subcommand
