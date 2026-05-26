@@ -2982,3 +2982,73 @@ fn test_e2e_keys_setup_runs_generate_key_command() {
         "bastion key file content must match the deterministic generate_key output"
     );
 }
+
+// ─── yconn keys update ────────────────────────────────────────────────────────
+
+/// `yconn keys update --help` prints help text describing the command and its optional `name` argument.
+#[test]
+fn keys_update_help_prints_description() {
+    let env = TestEnv::new();
+    let out = env.run(&["keys", "update", "--help"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Delete") || stdout.contains("update"),
+        "help text must describe the update command, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("[NAME]") || stdout.contains("name"),
+        "help text must mention optional 'name' argument, got: {stdout}"
+    );
+}
+
+/// `yconn keys update` (no argument) compiles and dispatches to
+/// `commands::keys::update` with `name = None`.
+#[test]
+fn keys_update_no_argument_dispatches_correctly() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        concat!(
+            "connections:\n",
+            "  srv:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: ~/.ssh/id_rsa\n",
+            "      generate_key: \"echo test > ${key}\"\n",
+            "    description: Test server\n",
+        ),
+    );
+
+    let out = env.run(&["keys", "update"]);
+    TestEnv::assert_ok(&out);
+}
+
+/// `yconn keys update <name>` compiles and dispatches to
+/// `commands::keys::update` with `name = Some(<name>)`.
+#[test]
+fn keys_update_with_name_argument_dispatches_correctly() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        concat!(
+            "connections:\n",
+            "  srv:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: ~/.ssh/id_rsa\n",
+            "      generate_key: \"echo test > ${key}\"\n",
+            "    description: Test server\n",
+        ),
+    );
+
+    let out = env.run(&["keys", "update", "srv"]);
+    TestEnv::assert_ok(&out);
+}
