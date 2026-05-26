@@ -1277,6 +1277,55 @@ fn ssh_config_two_runs_accumulate_blocks() {
     );
 }
 
+/// `yconn ssh-config install` with a pre-existing old-format stale block
+/// (`Host dkcphdcvsbld[4..28]` with `# yconn:` prefixed comment) normalizes
+/// it to `Host dkcphdcvsbld*` when a matching connection is defined.
+#[test]
+fn ssh_config_install_normalizes_stale_range_pattern_block() {
+    let env = TestEnv::new();
+
+    // Pre-populate yconn-connections with a stale block using the old format.
+    let ssh_dir = env.home.path().join(".ssh");
+    fs::create_dir_all(&ssh_dir).unwrap();
+    let conn_file = ssh_dir.join("yconn-connections");
+    fs::write(
+        &conn_file,
+        "# description: Old stale range pattern block\n# auth: key\n# yconn: old-format\nHost dkcphdcvsbld[4..28]\n    HostName dkcphdcvsbld%h.internal\n    User admin\n\n",
+    )
+    .unwrap();
+
+    // Write user config with the matching connection name.
+    env.write_user_config(
+        "connections",
+        "connections:\n  dkcphdcvsbld[4..28]:\n    host: dkcphdcvsbld${name}.internal\n    user: admin\n    auth:\n      type: key\n      key: ~/.ssh/admin_key\n    description: Range pattern hosts\n",
+    );
+
+    let out = env.run(&["ssh-config", "install", "--dry-run"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    // Count occurrences of "Host dkcphdcvsbld*"
+    let host_pattern_count = stdout.matches("Host dkcphdcvsbld*").count();
+    assert_eq!(
+        host_pattern_count, 1,
+        "expected exactly one 'Host dkcphdcvsbld*' in stdout, got {}: {}",
+        host_pattern_count, stdout
+    );
+
+    // Old format pattern must not appear
+    assert!(
+        !stdout.contains("Host dkcphdcvsbld[4..28]"),
+        "old-format 'Host dkcphdcvsbld[4..28]' must not appear in output, got: {stdout}"
+    );
+
+    // Old format comment must not appear
+    assert!(
+        !stdout.contains("# yconn:"),
+        "old-format '# yconn:' comment must not appear in output, got: {stdout}"
+    );
+}
+
 // ─── ssh-config print ─────────────────────────────────────────────────────────
 
 /// `yconn ssh-config print` renders Host blocks to stdout without writing files.
