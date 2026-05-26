@@ -3052,3 +3052,209 @@ fn keys_update_with_name_argument_dispatches_correctly() {
     let out = env.run(&["keys", "update", "srv"]);
     TestEnv::assert_ok(&out);
 }
+
+/// `yconn keys update <name>` with "y\n" on stdin and a pre-existing key file —
+/// file is deleted and re-created with the expected content; exit status 0
+#[test]
+fn keys_update_named_with_y_response_deletes_and_recreates_key_file() {
+    let env = TestEnv::new();
+
+    let key_path = env.cwd.path().join("test_key");
+    let key_path_str = key_path.to_string_lossy();
+
+    let yaml = format!(
+        concat!(
+            "connections:\n",
+            "  myconn:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key_path}\n",
+            "      generate_key: \"printf 'new key content' > ${{key}}\"\n",
+            "    description: Test connection\n",
+        ),
+        key_path = key_path_str,
+    );
+    env.write_user_config("connections", &yaml);
+
+    // Create a pre-existing key file with old content
+    fs::write(&key_path, "old key content").unwrap();
+    assert!(key_path.exists(), "key file must exist before update");
+
+    // Run `yconn keys update myconn` with "y\n" response
+    let out = env.run_with_stdin(&["keys", "update", "myconn"], "y\n");
+    TestEnv::assert_ok(&out);
+
+    // Verify the key file was deleted and recreated with new content
+    assert!(key_path.exists(), "key file must be recreated");
+    let contents = fs::read_to_string(&key_path).expect("key file must be readable");
+    assert_eq!(
+        contents, "new key content",
+        "key file must contain the newly generated content"
+    );
+}
+
+/// `yconn keys update <name>` with "n\n" on stdin — key file is not deleted,
+/// command exits 0
+#[test]
+fn keys_update_named_with_n_response_does_not_delete_key_file() {
+    let env = TestEnv::new();
+
+    let key_path = env.cwd.path().join("test_key");
+    let key_path_str = key_path.to_string_lossy();
+
+    let yaml = format!(
+        concat!(
+            "connections:\n",
+            "  myconn:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key_path}\n",
+            "      generate_key: \"printf 'new key' > ${{key}}\"\n",
+            "    description: Test connection\n",
+        ),
+        key_path = key_path_str,
+    );
+    env.write_user_config("connections", &yaml);
+
+    // Create a pre-existing key file with some content
+    fs::write(&key_path, "original key content").unwrap();
+    let original_content = fs::read_to_string(&key_path).unwrap();
+
+    // Run `yconn keys update myconn` with "n\n" response
+    let out = env.run_with_stdin(&["keys", "update", "myconn"], "n\n");
+    TestEnv::assert_ok(&out);
+
+    // Verify the key file still exists with unchanged content
+    assert!(key_path.exists(), "key file must still exist");
+    let current_content = fs::read_to_string(&key_path).expect("key file must be readable");
+    assert_eq!(
+        current_content, original_content,
+        "key file content must be unchanged"
+    );
+}
+
+/// `yconn keys update` (iterate-all) with "y\ny\n" on stdin and two qualifying
+/// connections — both key files are re-created; exit status 0
+#[test]
+fn keys_update_iterate_all_with_two_connections_and_y_responses() {
+    let env = TestEnv::new();
+
+    let key1_path = env.cwd.path().join("key1");
+    let key2_path = env.cwd.path().join("key2");
+    let key1_path_str = key1_path.to_string_lossy();
+    let key2_path_str = key2_path.to_string_lossy();
+
+    let yaml = format!(
+        concat!(
+            "connections:\n",
+            "  conn1:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key1_path}\n",
+            "      generate_key: \"printf 'content1' > ${{key}}\"\n",
+            "    description: First connection\n",
+            "  conn2:\n",
+            "    host: 10.0.0.2\n",
+            "    user: admin\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key2_path}\n",
+            "      generate_key: \"printf 'content2' > ${{key}}\"\n",
+            "    description: Second connection\n",
+        ),
+        key1_path = key1_path_str,
+        key2_path = key2_path_str,
+    );
+    env.write_user_config("connections", &yaml);
+
+    // Create pre-existing key files
+    fs::write(&key1_path, "old1").unwrap();
+    fs::write(&key2_path, "old2").unwrap();
+
+    // Run `yconn keys update` (no name) with "y\ny\n" responses
+    let out = env.run_with_stdin(&["keys", "update"], "y\ny\n");
+    TestEnv::assert_ok(&out);
+
+    // Verify both key files were deleted and recreated
+    assert!(key1_path.exists(), "key1 must be recreated");
+    assert!(key2_path.exists(), "key2 must be recreated");
+
+    let content1 = fs::read_to_string(&key1_path).expect("key1 must be readable");
+    let content2 = fs::read_to_string(&key2_path).expect("key2 must be readable");
+
+    assert_eq!(content1, "content1", "key1 must have new content");
+    assert_eq!(content2, "content2", "key2 must have new content");
+}
+
+/// `yconn keys update <name>` on a connection with no `generate_key` — exits
+/// non-zero, stderr contains "has no generate_key"
+#[test]
+fn keys_update_named_without_generate_key_fails() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        concat!(
+            "connections:\n",
+            "  nokeygen:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: ~/.ssh/id_rsa\n",
+            "    description: No generate_key\n",
+        ),
+    );
+
+    let out = env.run_with_stdin(&["keys", "update", "nokeygen"], "y\n");
+    assert!(
+        !out.status.success(),
+        "keys update on connection without generate_key must exit non-zero"
+    );
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("has no generate_key"),
+        "stderr must contain 'has no generate_key', got: {stderr}"
+    );
+}
+
+/// `yconn keys update <name>` on an unknown connection name — exits non-zero,
+/// stderr contains "unknown connection"
+#[test]
+fn keys_update_named_unknown_connection_fails() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        concat!(
+            "connections:\n",
+            "  myconn:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: ~/.ssh/id_rsa\n",
+            "      generate_key: \"printf 'key' > ${key}\"\n",
+            "    description: Some connection\n",
+        ),
+    );
+
+    let out = env.run_with_stdin(&["keys", "update", "nonexistent"], "y\n");
+    assert!(
+        !out.status.success(),
+        "keys update on unknown connection must exit non-zero"
+    );
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("unknown connection"),
+        "stderr must contain 'unknown connection', got: {stderr}"
+    );
+}
