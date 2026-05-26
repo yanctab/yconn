@@ -2982,3 +2982,23 @@ fn test_e2e_keys_setup_runs_generate_key_command() {
         "bastion key file content must match the deterministic generate_key output"
     );
 }
+
+// ─── yconn keys update ────────────────────────────────────────────────────────
+
+/// `yconn keys update --help` prints help text describing the command and its optional `name` argument.
+#[test]
+fn keys_update_help_prints_description() {
+    let env = TestEnv::new();
+    let out = env.run(&["keys", "update", "--help"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Delete") || stdout.contains("update"),
+        "help text must describe the update command, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("[NAME]") || stdout.contains("name"),
+        "help text must mention optional 'name' argument, got: {stdout}"
+    );
+}

@@ -42,6 +42,23 @@ pub fn setup(cfg: &LoadedConfig, renderer: &Renderer, name: Option<&str>) -> Res
     run_setup(cfg, renderer, name)
 }
 
+/// Delete an existing key file (if present) and run `generate_key` for one
+/// connection (by name) or every connection that has a `generate_key`
+/// configured when `name` is `None`.
+///
+/// This is a placeholder that satisfies the CLI plumbing requirement. The
+/// actual implementation of key deletion logic will be added in a future
+/// iteration.
+pub fn update(
+    _cfg: &LoadedConfig,
+    _renderer: &Renderer,
+    _name: Option<&str>,
+    _stdin: &mut dyn std::io::BufRead,
+) -> Result<()> {
+    // Placeholder: awaits implementation
+    Ok(())
+}
+
 // ─── Testable implementation ─────────────────────────────────────────────────
 
 /// Build the rows for `keys list` — one per connection that has a

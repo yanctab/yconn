@@ -200,6 +200,14 @@ pub enum KeyCommands {
         /// connection that has a `generate_key` configured.
         name: Option<String>,
     },
+
+    /// Delete an existing key file and re-run the `generate_key` command for one
+    /// connection (by name) or all qualifying connections (no argument)
+    Update {
+        /// Name of the connection to update. When omitted, iterates every
+        /// connection that has a `generate_key` configured.
+        name: Option<String>,
+    },
 }
 
 #[derive(Debug, Subcommand)]

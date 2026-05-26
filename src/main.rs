@@ -90,6 +90,9 @@ fn main() -> Result<()> {
                 KeyCommands::Setup { name } => {
                     commands::keys::setup(&cfg, &renderer, name.as_deref())
                 }
+                KeyCommands::Update { name } => {
+                    commands::keys::update(&cfg, &renderer, name.as_deref(), &mut std::io::stdin().lock())
+                }
             }
         }
         Commands::SshConfig(SshConfigArgs { subcommand }) => {
