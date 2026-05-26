@@ -230,7 +230,7 @@ fn finalise_block(lines: &[&str]) -> Option<HostBlock> {
         let rest = l.strip_prefix("Host ")?;
         // Ensure it is exactly one token (no embedded spaces).
         if !rest.is_empty() && !rest.contains(' ') {
-            Some(rest.to_string())
+            Some(translate_name_for_ssh(rest))
         } else {
             None
         }
@@ -1428,5 +1428,45 @@ mod tests {
             host_blocks.contains("User bob"),
             "expected 'User bob' in Host block, got: {host_blocks}"
         );
+    }
+
+    // Criterion 1: Range pattern names should be normalized to globs
+    #[test]
+    fn test_finalise_block_normalizes_range_pattern() {
+        let lines = vec![
+            "# comment",
+            "Host dkcphdcvsbld[4..28]",
+            "    HostName example.com",
+        ];
+        let block = super::finalise_block(&lines);
+        assert!(block.is_some(), "finalise_block should succeed");
+        let block = block.unwrap();
+        assert_eq!(
+            block.ssh_host, "dkcphdcvsbld*",
+            "range pattern [4..28] should be normalized to glob *"
+        );
+    }
+
+    // Criterion 2: Literal names should remain unchanged
+    #[test]
+    fn test_finalise_block_keeps_literal_names_unchanged() {
+        let lines = vec!["# comment", "Host prod-web", "    HostName example.com"];
+        let block = super::finalise_block(&lines);
+        assert!(block.is_some(), "finalise_block should succeed");
+        let block = block.unwrap();
+        assert_eq!(
+            block.ssh_host, "prod-web",
+            "literal name should remain unchanged"
+        );
+    }
+
+    // Criterion 3: Glob names should remain unchanged
+    #[test]
+    fn test_finalise_block_keeps_glob_names_unchanged() {
+        let lines = vec!["# comment", "Host web-*", "    HostName example.com"];
+        let block = super::finalise_block(&lines);
+        assert!(block.is_some(), "finalise_block should succeed");
+        let block = block.unwrap();
+        assert_eq!(block.ssh_host, "web-*", "glob name should remain unchanged");
     }
 }
