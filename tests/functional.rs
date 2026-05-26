@@ -3002,3 +3002,53 @@ fn keys_update_help_prints_description() {
         "help text must mention optional 'name' argument, got: {stdout}"
     );
 }
+
+/// `yconn keys update` (no argument) compiles and dispatches to
+/// `commands::keys::update` with `name = None`.
+#[test]
+fn keys_update_no_argument_dispatches_correctly() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        concat!(
+            "connections:\n",
+            "  srv:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: ~/.ssh/id_rsa\n",
+            "      generate_key: \"echo test > ${key}\"\n",
+            "    description: Test server\n",
+        ),
+    );
+
+    let out = env.run(&["keys", "update"]);
+    TestEnv::assert_ok(&out);
+}
+
+/// `yconn keys update <name>` compiles and dispatches to
+/// `commands::keys::update` with `name = Some(<name>)`.
+#[test]
+fn keys_update_with_name_argument_dispatches_correctly() {
+    let env = TestEnv::new();
+
+    env.write_user_config(
+        "connections",
+        concat!(
+            "connections:\n",
+            "  srv:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: ~/.ssh/id_rsa\n",
+            "      generate_key: \"echo test > ${key}\"\n",
+            "    description: Test server\n",
+        ),
+    );
+
+    let out = env.run(&["keys", "update", "srv"]);
+    TestEnv::assert_ok(&out);
+}
