@@ -1027,6 +1027,37 @@ mod tests {
         assert_eq!(ok_contents, "ok");
     }
 
+    // ── update: criterion 9 — iterate-all with "n" answer ──────────────────────
+
+    #[test]
+    fn test_update_iterate_all_n_answer_does_not_delete_or_run() {
+        let root = TempDir::new().unwrap();
+        let yconn = root.path().join(".yconn");
+        fs::create_dir_all(&yconn).unwrap();
+
+        let key_path = root.path().join("existing_key");
+        fs::write(&key_path, "original content").unwrap();
+
+        let cfg_yaml = format!(
+            "connections:\n  srv:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: {}\n      generate_key: \"echo fail > ${{key}}\"\n    description: srv\n",
+            key_path.display()
+        );
+        write_yaml(&yconn, "connections.yaml", &cfg_yaml);
+
+        let empty = TempDir::new().unwrap();
+        let cfg = load(root.path(), None, empty.path());
+        // Single "n\n" answer in iterate-all mode
+        let mut stdin = "n\n".as_bytes();
+        update(&cfg, &no_color(), None, &mut stdin).unwrap();
+
+        // Key file must still exist with original content (not deleted, not regenerated)
+        let contents = fs::read_to_string(&key_path).unwrap();
+        assert_eq!(
+            contents, "original content",
+            "key file must not be deleted or regenerated"
+        );
+    }
+
     // ── update: criterion 9 — confirmation prompt is flushed before read_line ──
 
     #[test]
