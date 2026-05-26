@@ -574,7 +574,7 @@ fn add_round_trip_list_and_show() {
     TestEnv::assert_ok(&out);
 
     // `yconn list` should show the new connection.
-    let list_out = env.run(&["list"]);
+    let list_out = env.run(&["connections", "list"]);
     TestEnv::assert_ok(&list_out);
     let list_stdout = String::from_utf8_lossy(&list_out.stdout);
     assert!(
@@ -704,7 +704,7 @@ fn parse_error_minimal_valid_project_config() {
         "connections:\n  my-server:\n    host: 10.0.0.1\n    user: admin\n    auth:\n      type: password\n    description: My server\n",
     );
 
-    let out = env.run(&["list"]);
+    let out = env.run(&["connections", "list"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -728,7 +728,7 @@ fn parse_error_minimal_valid_user_config() {
         "connections:\n  user-server:\n    host: 192.168.1.5\n    user: root\n    auth:\n      type: password\n    description: User server\n",
     );
 
-    let out = env.run(&["list"]);
+    let out = env.run(&["connections", "list"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -753,7 +753,7 @@ fn parse_error_missing_required_field() {
         "connections:\n  bad-server:\n    user: admin\n    auth:\n      type: password\n    description: Missing host\n",
     );
 
-    let out = env.run(&["list"]);
+    let out = env.run(&["connections", "list"]);
     assert!(
         !out.status.success(),
         "expected non-zero exit for missing required field, got 0"
@@ -781,7 +781,7 @@ fn parse_error_invalid_yaml_syntax() {
         "connections:\n  broken: [unclosed bracket\n    host: 10.0.0.1\n",
     );
 
-    let out = env.run(&["list"]);
+    let out = env.run(&["connections", "list"]);
     assert!(
         !out.status.success(),
         "expected non-zero exit for invalid YAML, got 0"
@@ -802,7 +802,7 @@ fn parse_error_empty_connections_block() {
     // Valid YAML but no connection entries.
     env.write_project_config("connections", "connections:\n");
 
-    let out = env.run(&["list"]);
+    let out = env.run(&["connections", "list"]);
     // Must exit 0 — an empty connections block is not an error.
     TestEnv::assert_ok(&out);
 
@@ -1568,7 +1568,7 @@ fn user_show_lists_entries_with_source() {
         "version: 1\n\nusers:\n  testuser: \"testusername\"\n  devkey: \"devval\"\n",
     );
 
-    let out = env.run(&["users", "show"]);
+    let out = env.run(&["users", "list"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -1600,7 +1600,7 @@ fn user_add_round_trip_show_reflects_new_entry() {
     TestEnv::assert_ok(&out);
 
     // Confirm `users show` returns the new entry.
-    let out2 = env.run(&["users", "show"]);
+    let out2 = env.run(&["users", "list"]);
     TestEnv::assert_ok(&out2);
 
     let stdout = String::from_utf8_lossy(&out2.stdout);
@@ -1695,7 +1695,7 @@ fn user_show_prints_username_from_map() {
     let env = TestEnv::new();
     env.write_user_config("connections", "version: 1\n\nusers:\n  user: \"alice\"\n");
 
-    let out = env.run(&["users", "show"]);
+    let out = env.run(&["users", "list"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -1716,7 +1716,7 @@ fn user_show_prints_username_from_map() {
 fn user_show_prints_username_from_env_var() {
     let env = TestEnv::new();
     // No users map at all — fall back to $USER env var.
-    let out = env.run_with_env(&["users", "show"], &[("USER", "bob")]);
+    let out = env.run_with_env(&["users", "list"], &[("USER", "bob")]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -2130,7 +2130,7 @@ fn identity_list_shows_identity_auth_type() {
         &conn_identity("github", "github.com", "git", None, &key),
     );
 
-    let out = env.run(&["list"]);
+    let out = env.run(&["connections", "list"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -2231,7 +2231,7 @@ fn identity_add_wizard_round_trip() {
     TestEnv::assert_ok(&out);
 
     // Verify the connection was added by listing it.
-    let out = env.run(&["list"]);
+    let out = env.run(&["connections", "list"]);
     TestEnv::assert_ok(&out);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
@@ -3305,5 +3305,102 @@ fn keys_update_named_unknown_connection_fails() {
     assert!(
         stderr.contains("unknown connection"),
         "stderr must contain 'unknown connection', got: {stderr}"
+    );
+}
+
+// ─── CLI routing tests ────────────────────────────────────────────────────────
+
+/// The old top-level `yconn list` command must not be recognised
+#[test]
+fn cli_list_top_level_not_recognized() {
+    let env = TestEnv::new();
+    env.write_user_config(
+        "connections",
+        "connections:\n  test:\n    host: example.com\n    user: deploy\n    auth:\n      type: password\n    description: test\n",
+    );
+
+    let out = env.run(&["list"]);
+    assert!(!out.status.success(), "yconn list must exit with error");
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("unknown subcommand") || stderr.contains("unrecognized"),
+        "stderr must indicate command not recognized, got: {stderr}"
+    );
+}
+
+/// The old `yconn users show` command must not be recognised
+#[test]
+fn cli_users_show_not_recognized() {
+    let env = TestEnv::new();
+    env.write_user_config(
+        "connections",
+        "version: 1\n\nusers:\n  testuser: \"testval\"\n",
+    );
+
+    let out = env.run(&["users", "show"]);
+    assert!(
+        !out.status.success(),
+        "yconn users show must exit with error"
+    );
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("unknown subcommand") || stderr.contains("unrecognized"),
+        "stderr must indicate command not recognized, got: {stderr}"
+    );
+}
+
+/// `yconn connections list` must work identically to the old `yconn list`
+#[test]
+fn cli_connections_list_works() {
+    let env = TestEnv::new();
+    env.write_user_config(
+        "connections",
+        "connections:\n  myconn:\n    host: example.com\n    user: deploy\n    auth:\n      type: password\n    description: My connection\n",
+    );
+
+    let out = env.run(&["connections", "list"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("myconn"),
+        "output must contain connection name, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("example.com"),
+        "output must contain host, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("deploy"),
+        "output must contain user, got: {stdout}"
+    );
+}
+
+/// `yconn users list` must work identically to the old `yconn users show`
+#[test]
+fn cli_users_list_works() {
+    let env = TestEnv::new();
+    env.write_user_config(
+        "connections",
+        "version: 1\n\nusers:\n  testuser: \"testusername\"\n  devkey: \"devval\"\n",
+    );
+
+    let out = env.run(&["users", "list"]);
+    TestEnv::assert_ok(&out);
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("testuser"),
+        "output must contain user key, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("testusername"),
+        "output must contain user value, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("devkey"),
+        "output must contain another user key, got: {stdout}"
     );
 }

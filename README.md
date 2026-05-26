@@ -57,7 +57,7 @@ yconn connections init
 yconn connections add
 
 # List all connections
-yconn list
+yconn connections list
 
 # Connect
 yconn connect prod-web
@@ -70,7 +70,7 @@ yconn groups use work
 
 | Command | Description |
 |---|---|
-| `yconn list` | List all connections across all layers |
+| `yconn connections list` | List all connections across all layers |
 | `yconn connect <name>` | Connect to a named host |
 | `yconn connections show <name>` | Show resolved config for a connection (no secrets printed) |
 | `yconn connections show --dump` | Print the fully merged connections and users maps as YAML |
@@ -91,7 +91,7 @@ yconn groups use work
 | `yconn ssh-config uninstall` | Remove `~/.ssh/yconn-connections` and the `Include` line from `~/.ssh/config` |
 | `yconn ssh-config disable` | Remove the `Include` line from `~/.ssh/config`, keeping `~/.ssh/yconn-connections` intact |
 | `yconn ssh-config enable` | Add the `Include` line back to `~/.ssh/config` if currently absent |
-| `yconn users show` | List all user key/value entries across all layers |
+| `yconn users list` | List all user key/value entries across all layers |
 | `yconn users add` | Interactive wizard to add a user entry to a chosen layer; use `--user KEY:VALUE` (repeatable) to skip the wizard |
 | `yconn users edit <key>` | Open the source config file for a user entry in `$EDITOR` |
 

@@ -54,6 +54,13 @@ pub enum InitLocation {
 
 #[derive(Debug, Subcommand)]
 pub enum ConnectionCommands {
+    /// List all connections across all layers
+    List {
+        /// Filter output to connections whose group field equals NAME
+        #[arg(long, value_name = "NAME")]
+        group: Option<String>,
+    },
+
     /// Show the resolved config for a connection (no secrets printed)
     Show {
         /// Name of the connection to inspect. Required unless --dump is set.
@@ -106,13 +113,6 @@ pub enum ConnectionCommands {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// List all connections across all layers
-    List {
-        /// Filter output to connections whose group field equals NAME
-        #[arg(long, value_name = "NAME")]
-        group: Option<String>,
-    },
-
     /// Connect to a named host
     Connect {
         /// Name of the connection to open
@@ -164,7 +164,7 @@ pub enum Commands {
 #[derive(Debug, Subcommand)]
 pub enum UserCommands {
     /// List all user entries across all layers (with shadowing info)
-    Show,
+    List,
 
     /// Interactive wizard to add a user entry to a chosen layer.
     /// When --user is supplied the wizard is skipped entirely.
