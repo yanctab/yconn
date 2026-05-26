@@ -557,7 +557,7 @@ fn no_docker_block_uses_ssh() {
 
 // ─── Add round-trip and edit invocation ──────────────────────────────────────
 
-/// `yconn connections add` (piped stdin) → `yconn list` then `yconn connections show`
+/// `yconn connections add` (piped stdin) → `yconn connections list` then `yconn connections show`
 /// successfully display the newly created connection, verifying the YAML is valid and
 /// parseable after the add wizard writes it.
 #[test]
@@ -573,7 +573,7 @@ fn add_round_trip_list_and_show() {
     let out = env.run_with_stdin(&["connections", "add", "--layer", "user"], &stdin_data);
     TestEnv::assert_ok(&out);
 
-    // `yconn list` should show the new connection.
+    // `yconn connections list` should show the new connection.
     let list_out = env.run(&["connections", "list"]);
     TestEnv::assert_ok(&list_out);
     let list_stdout = String::from_utf8_lossy(&list_out.stdout);
@@ -693,7 +693,7 @@ fn edit_invokes_editor_with_correct_file_path() {
 
 // ─── Parse error scenarios ────────────────────────────────────────────────────
 
-/// A manually created minimal valid project config — `yconn list` shows the entry.
+/// A manually created minimal valid project config — `yconn connections list` shows the entry.
 #[test]
 fn parse_error_minimal_valid_project_config() {
     let env = TestEnv::new();
@@ -718,7 +718,7 @@ fn parse_error_minimal_valid_project_config() {
     );
 }
 
-/// A manually created minimal valid user layer config — `yconn list` shows the entry.
+/// A manually created minimal valid user layer config — `yconn connections list` shows the entry.
 #[test]
 fn parse_error_minimal_valid_user_config() {
     let env = TestEnv::new();
@@ -742,7 +742,7 @@ fn parse_error_minimal_valid_user_config() {
     );
 }
 
-/// A connection entry missing a required field — `yconn list` exits non-zero
+/// A connection entry missing a required field — `yconn connections list` exits non-zero
 /// with a clear error message naming the file, entry, and missing field.
 #[test]
 fn parse_error_missing_required_field() {
@@ -770,7 +770,7 @@ fn parse_error_missing_required_field() {
     );
 }
 
-/// Invalid YAML syntax — `yconn list` exits non-zero with the file name in
+/// Invalid YAML syntax — `yconn connections list` exits non-zero with the file name in
 /// the error message.
 #[test]
 fn parse_error_invalid_yaml_syntax() {
@@ -794,7 +794,7 @@ fn parse_error_invalid_yaml_syntax() {
     );
 }
 
-/// Valid YAML with an empty `connections` block — `yconn list` exits 0 and
+/// Valid YAML with an empty `connections` block — `yconn connections list` exits 0 and
 /// shows no connection entries (no error).
 #[test]
 fn parse_error_empty_connections_block() {
@@ -1558,7 +1558,7 @@ fn ssh_config_enable_noop_when_include_already_present() {
 
 // ─── yconn users ─────────────────────────────────────────────────────────────
 
-/// `yconn users show` lists all user entries across layers with correct source.
+/// `yconn users list` lists all user entries across layers with correct source.
 #[test]
 fn user_show_lists_entries_with_source() {
     let env = TestEnv::new();
@@ -1590,7 +1590,7 @@ fn user_show_lists_entries_with_source() {
     );
 }
 
-/// `yconn users add` round-trip: add an entry then `yconn users show` reflects it.
+/// `yconn users add` round-trip: add an entry then `yconn users list` reflects it.
 #[test]
 fn user_add_round_trip_show_reflects_new_entry() {
     let env = TestEnv::new();
@@ -1687,7 +1687,7 @@ fn connect_user_override_shadows_config_users_entry() {
 
 // ─── yconn users show — user row (no header) ─────────────────────────────────
 
-/// `yconn users show` does NOT print a `Username:` header. When the `users:`
+/// `yconn users list` does NOT print a `Username:` header. When the `users:`
 /// map contains a `user` key with value `alice`, `alice` appears as a table
 /// row value.
 #[test]
@@ -1709,7 +1709,7 @@ fn user_show_prints_username_from_map() {
     );
 }
 
-/// `yconn users show` does NOT print a `Username:` header. When no `user` key
+/// `yconn users list` does NOT print a `Username:` header. When no `user` key
 /// exists in the `users:` map but `USER=bob`, a synthetic row appears with
 /// `bob` as the value and SOURCE containing `environment variable $USER`.
 #[test]
