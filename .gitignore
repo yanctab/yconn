@@ -2,3 +2,4 @@
 dist/
 *.deb
 docs/man/*.1
+.claude/worktrees
