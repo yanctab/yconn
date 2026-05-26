@@ -1469,4 +1469,45 @@ mod tests {
         let block = block.unwrap();
         assert_eq!(block.ssh_host, "web-*", "glob name should remain unchanged");
     }
+
+    // Criterion 4: merge_host_blocks deduplicates range-pattern and normalized blocks
+    #[test]
+    fn test_merge_host_blocks_replaces_range_pattern_block_with_normalized() {
+        // Existing block with the old range pattern.
+        let existing_content =
+            "# description: old\n# auth: key\nHost dkcphdcvsbld[4..28]\n    HostName 10.0.0.1\n\n";
+        let existing = parse_host_blocks(existing_content);
+        assert_eq!(existing.len(), 1);
+        // After normalization, the ssh_host should be dkcphdcvsbld*.
+        assert_eq!(existing[0].ssh_host, "dkcphdcvsbld*");
+
+        // New block with the normalized pattern.
+        let new_content =
+            "# description: new\n# auth: key\nHost dkcphdcvsbld*\n    HostName 10.0.0.2\n";
+        let new_blocks = parse_host_blocks(new_content);
+        assert_eq!(new_blocks.len(), 1);
+        assert_eq!(new_blocks[0].ssh_host, "dkcphdcvsbld*");
+
+        // Merge: since both have the same normalized ssh_host, the new block replaces the old.
+        let merged = merge_host_blocks(existing, new_blocks);
+        let result_blocks = parse_host_blocks(&merged);
+
+        // Exactly one block in the result.
+        assert_eq!(
+            result_blocks.len(),
+            1,
+            "merged result should contain exactly one block, got: {merged}"
+        );
+
+        // The single block has the new content.
+        assert_eq!(result_blocks[0].ssh_host, "dkcphdcvsbld*");
+        assert!(
+            merged.contains("10.0.0.2"),
+            "merged block should contain the new HostName (10.0.0.2), got: {merged}"
+        );
+        assert!(
+            !merged.contains("10.0.0.1"),
+            "merged block should NOT contain the old HostName (10.0.0.1), got: {merged}"
+        );
+    }
 }
