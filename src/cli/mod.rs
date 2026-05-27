@@ -138,12 +138,12 @@ pub enum Commands {
         subcommand: GroupCommands,
     },
 
-    /// Copy project connections into a target layer (user or system)
+    /// Generate keys and write SSH config from project layer (connections skipped unless `--connections` is given)
     Install {
         /// Target layer to install connections into (user or system; project is not allowed)
         #[arg(long, value_name = "LAYER")]
         layer: Option<LayerArg>,
-        /// Install connections phase
+        /// Enable the connections phase (off by default)
         #[arg(long)]
         connections: bool,
         /// Install keys phase

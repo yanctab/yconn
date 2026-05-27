@@ -278,7 +278,7 @@ When `--verbose` is passed, the full `docker run` command is printed before exec
 | `yconn connections remove <name>` | Remove a connection (prompts for layer if ambiguous) |
 | `yconn connections init` | Scaffold a `<group>.yaml` in `.yconn/` in the current directory |
 | `yconn config` | Show which config files are active, their paths, and Docker status |
-| `yconn install` | Copy project connections into the user (or system) layer |
+| `yconn install` | Generate keys and write SSH config from project layer (connections skipped unless `--connections` is given) |
 | `yconn groups list` | Show all groups found across all layers |
 | `yconn groups use <n>` | Set the active group (persisted to `~/.config/yconn/session.yml`) |
 | `yconn groups clear` | Remove `active_group` from `session.yml`, revert to default (`connections`) |
@@ -288,9 +288,9 @@ When `--verbose` is passed, the full `docker run` command is printed before exec
 
 Global flags:
 - `--layer system|user|project` — target a specific layer for `add`, `edit`, `remove`, and `install`
-- `--connections` — filter connections by name pattern (repeatable) for `install`
+- `--connections` — enable the connections phase for `install`
 - `--keys` — filter keys by name for `keys install`
-- `--ssh-config` — include SSH config output in `install`
+- `--ssh-config` — enable the ssh-config phase for `install`
 - `--all` — include shadowed entries in `yconn connections list`
 - `--no-color` — disable colored output
 - `--verbose` — print config loading decisions, merge resolution, and full Docker invocation

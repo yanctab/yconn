@@ -62,10 +62,10 @@ yconn connections list
 # Connect
 yconn connect prod-web
 
-# Copy project connections into user layer
+# Generate keys and SSH config from project layer
 yconn install
 
-# Copy only connections (skip keys and SSH config)
+# Also run the connections phase
 yconn install --connections
 
 # Switch to a named group
@@ -84,7 +84,7 @@ yconn groups use work
 | `yconn connections edit <name>` | Open the connection's source config file in `$EDITOR` |
 | `yconn connections remove <name>` | Remove a connection (prompts for layer if ambiguous) |
 | `yconn connections init` | Scaffold a `<group>.yaml` in `.yconn/` in the current directory |
-| `yconn install` | Copy project connections into the user (or system) layer |
+| `yconn install` | Generate keys and write SSH config from project layer (connections skipped unless `--connections` is given) |
 | `yconn keys list` | List connections that have a `generate_key` command configured |
 | `yconn keys install [<name>]` | Run `generate_key` for one connection or every qualifying connection |
 | `yconn config` | Show active config files, their paths, and Docker status |
@@ -105,7 +105,7 @@ Global flags: `--all`, `--verbose`
 
 Per-subcommand flags:
 - `--layer system|user|project` — for `connections add`, `connections edit`, `connections remove`, `install`, `users add`, `users edit`
-- `--connections`, `--keys`, `--ssh-config` — selector flags for `install` (install only the selected phase; when none are provided, all phases run)
+- `--connections`, `--keys`, `--ssh-config` — selector flags for `install` (when none are provided, keys and ssh-config run)
 
 ## Development
 
