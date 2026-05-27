@@ -2773,7 +2773,10 @@ fn test_e2e_install_system_layer_copies_all_fixture_connections() {
     let env = TestEnv::new();
     env.write_project_config("connections", E2E_FIXTURE);
 
-    let out = env.run_with_stdin(&["install", "--connections", "--layer", "system"], "y\ny\ny\ny\ny\ny\ny\n");
+    let out = env.run_with_stdin(
+        &["install", "--connections", "--layer", "system"],
+        "y\ny\ny\ny\ny\ny\ny\n",
+    );
     TestEnv::assert_ok(&out);
 
     let system_yaml = env.system.path().join("connections.yaml");

@@ -1089,10 +1089,7 @@ mod tests {
 
         orchestrate_install_phases(&selectors, &mut tracker).unwrap();
 
-        assert_eq!(
-            tracker.ran_phases(),
-            vec!["keys", "ssh_config"]
-        );
+        assert_eq!(tracker.ran_phases(), vec!["keys", "ssh_config"]);
     }
 
     #[test]
@@ -1123,9 +1120,6 @@ mod tests {
         // Even though keys "fails" internally, ssh-config should still run.
         orchestrate_with_keys_failure(&selectors, &mut tracker).unwrap();
 
-        assert_eq!(
-            tracker.ran_phases(),
-            vec!["keys", "ssh_config"]
-        );
+        assert_eq!(tracker.ran_phases(), vec!["keys", "ssh_config"]);
     }
 }
