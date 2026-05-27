@@ -55,7 +55,7 @@ connections:
 yconn connections init
 
 # List all connections
-yconn list
+yconn connections list
 
 # Show full details for a connection
 yconn connections show prod-web
@@ -128,14 +128,14 @@ connections:
 
 ```bash
 # List connections — prod-web shows from user layer (your override wins)
-yconn list
+yconn connections list
 
 # See where prod-web comes from
 yconn connections show prod-web
 # Source: user (/home/you/.config/yconn/connections.yaml)
 
 # See all entries including the shadowed team version
-yconn list --all
+yconn connections list --all
 # prod-web appears twice: user layer (active) and project layer (shadowed)
 
 # Connect using your overridden key
@@ -146,7 +146,7 @@ yconn connect prod-web
 
 - The user layer (`~/.config/yconn/`) takes higher priority than the project layer
   (`.yconn/`). Any connection defined in both layers will use the user-layer values.
-- The project layer entry for `prod-web` is still present — `yconn list --all` shows it
+- The project layer entry for `prod-web` is still present — `yconn connections list --all` shows it
   with a `[shadowed]` tag.
 - Unique connection names (like `dev-vm`) are simply merged in alongside project entries.
 
@@ -287,13 +287,13 @@ connections:
 yconn groups list
 
 # Show all connections (no group filter)
-yconn list
+yconn connections list
 
 # Switch to the work group — subsequent list/connect only shows work connections
 yconn groups use work
 
 # List only work connections
-yconn list
+yconn connections list
 
 # Connect to a work server
 yconn connect work-web
@@ -302,16 +302,16 @@ yconn connect work-web
 yconn groups use private
 
 # List only private connections
-yconn list
+yconn connections list
 
 # Connect to the home server
 yconn connect home-server
 
 # Show connections from a specific group without changing the active group
-yconn list --group work
+yconn connections list --group work
 
 # Show all connections regardless of active group
-yconn list --all
+yconn connections list --all
 
 # Check which group is currently active
 yconn groups current
@@ -328,7 +328,7 @@ yconn groups clear
   terminal sessions until changed.
 - Connections without a `group:` field are always shown when no group filter is active.
   When a group is locked, only tagged connections matching the group are shown.
-- `yconn list --all` always overrides any group filter and shows every connection.
+- `yconn connections list --all` always overrides any group filter and shows every connection.
 - `yconn groups use <name>` warns if no connections with that group value exist in any
   layer, but it still sets the group.
 
@@ -420,7 +420,7 @@ yconn connections show web-prod-01
 - Use `host: "${name}.corp.com"` to append a domain suffix to every matched input.
 - Use `host: "${name}"` or leave host blank/placeholder for bare-hostname behaviour.
 - Quote range-pattern YAML keys that contain `[`: `"app[1..20]"`.
-- Pattern entries appear in `yconn list` with their raw pattern name (e.g. `app[1..20]`)
+- Pattern entries appear in `yconn connections list` with their raw pattern name (e.g. `app[1..20]`)
   in the NAME column.
 - Same-pattern names across layers follow normal priority rules (higher layer wins) and
   do not trigger conflict detection.
@@ -487,7 +487,7 @@ directory and checks again.
 - All three conventions are recognised by the upward walk — you can mix conventions
   across different projects.
 - `yconn connections init` fails with a clear error if the target file already exists.
-- After running `yconn connections init`, edit the scaffolded file and run `yconn list` to verify.
+- After running `yconn connections init`, edit the scaffolded file and run `yconn connections list` to verify.
 
 ---
 
@@ -537,7 +537,7 @@ yconn connections show prod-web
 # User: ${testuser}   ← raw value, not expanded
 
 # List all user entries across all layers (with source and shadowing info)
-yconn users show
+yconn users list
 
 # Add a new user entry interactively (defaults to user layer)
 yconn users add
