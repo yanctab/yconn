@@ -79,16 +79,21 @@ fn main() -> Result<()> {
             let overrides = parse_user_overrides(&user_overrides)?;
             commands::connect::run(&cfg, &renderer, &name, verbose, &overrides)
         }
-        Commands::Install { layer } => {
+        Commands::Install {
+            layer,
+            connections,
+            keys,
+            ssh_config,
+        } => {
             let cfg = load_and_warn(&renderer, verbose)?;
-            commands::install::run(&cfg, layer)
+            commands::install::run(&cfg, layer, connections, keys, ssh_config)
         }
         Commands::Keys { subcommand } => {
             let cfg = load_and_warn(&renderer, verbose)?;
             match subcommand {
                 KeyCommands::List => commands::keys::list(&cfg, &renderer),
-                KeyCommands::Setup { name } => {
-                    commands::keys::setup(&cfg, &renderer, name.as_deref())
+                KeyCommands::Install { name } => {
+                    commands::keys::install(&cfg, &renderer, name.as_deref())
                 }
                 KeyCommands::Update { name } => commands::keys::update(
                     &cfg,
