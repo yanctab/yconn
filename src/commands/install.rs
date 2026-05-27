@@ -29,16 +29,16 @@ pub struct InstallSelectors {
     pub ssh_config: bool,
 }
 
-/// Resolve selector flags using the default-to-all rule.
+/// Resolve selector flags using the default-to-keys-and-ssh-config rule.
 ///
-/// When none of the flags are provided, all phases are enabled.
+/// When none of the flags are provided, keys and ssh_config phases are enabled.
 /// When one or more flags are provided, only the flagged phases are enabled.
 #[allow(dead_code)]
 pub fn resolve_selectors(connections: bool, keys: bool, ssh_config: bool) -> InstallSelectors {
     if !connections && !keys && !ssh_config {
-        // No flags provided — enable all phases (default-to-all rule).
+        // No flags provided — enable keys and ssh_config phases.
         InstallSelectors {
-            connections: true,
+            connections: false,
             keys: true,
             ssh_config: true,
         }
@@ -923,12 +923,12 @@ mod tests {
     // ── resolve_selectors tests ───────────────────────────────────────────────
 
     #[test]
-    fn test_resolve_selectors_no_flags_enables_all_phases() {
+    fn test_resolve_selectors_no_flags_enables_keys_and_ssh_config() {
         let selectors = resolve_selectors(false, false, false);
         assert_eq!(
             selectors,
             InstallSelectors {
-                connections: true,
+                connections: false,
                 keys: true,
                 ssh_config: true
             }
@@ -994,6 +994,19 @@ mod tests {
             selectors,
             InstallSelectors {
                 connections: true,
+                keys: true,
+                ssh_config: true
+            }
+        );
+    }
+
+    #[test]
+    fn test_resolve_selectors_keys_and_ssh_config() {
+        let selectors = resolve_selectors(false, true, true);
+        assert_eq!(
+            selectors,
+            InstallSelectors {
+                connections: false,
                 keys: true,
                 ssh_config: true
             }
@@ -1070,16 +1083,13 @@ mod tests {
     }
 
     #[test]
-    fn test_orchestrator_no_selectors_runs_all_phases_in_order() {
+    fn test_orchestrator_no_selectors_runs_keys_and_ssh_config() {
         let selectors = resolve_selectors(false, false, false);
         let mut tracker = PhaseTracker::new();
 
         orchestrate_install_phases(&selectors, &mut tracker).unwrap();
 
-        assert_eq!(
-            tracker.ran_phases(),
-            vec!["connections", "keys", "ssh_config"]
-        );
+        assert_eq!(tracker.ran_phases(), vec!["keys", "ssh_config"]);
     }
 
     #[test]
@@ -1104,15 +1114,12 @@ mod tests {
             Ok(())
         }
 
-        let selectors = resolve_selectors(false, false, false); // All phases enabled
+        let selectors = resolve_selectors(false, false, false); // Keys and ssh_config enabled
         let mut tracker = PhaseTracker::new();
 
         // Even though keys "fails" internally, ssh-config should still run.
         orchestrate_with_keys_failure(&selectors, &mut tracker).unwrap();
 
-        assert_eq!(
-            tracker.ran_phases(),
-            vec!["connections", "keys", "ssh_config"]
-        );
+        assert_eq!(tracker.ran_phases(), vec!["keys", "ssh_config"]);
     }
 }
