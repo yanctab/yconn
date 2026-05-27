@@ -129,7 +129,7 @@ fn main() -> Result<()> {
         Commands::Users { subcommand } => match subcommand {
             UserCommands::List => {
                 let cfg = load_and_warn(&renderer, verbose)?;
-                commands::user::show(&cfg, &renderer)
+                commands::user::list(&cfg, &renderer)
             }
             UserCommands::Add { layer, user_pairs } => commands::user::add(layer, user_pairs),
             UserCommands::Edit { key, layer } => {

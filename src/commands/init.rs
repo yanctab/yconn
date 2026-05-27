@@ -64,7 +64,7 @@ pub(crate) fn run_impl(cwd: &std::path::Path, location: InitLocation) -> Result<
     set_private_permissions(&target)?;
 
     println!("Created {}", canonicalize_display(&target).display());
-    println!("Edit it to add connections, then run `yconn list` to verify.");
+    println!("Edit it to add connections, then run `yconn connections list` to verify.");
 
     Ok(())
 }

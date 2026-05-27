@@ -1,4 +1,4 @@
-// Handler for `yconn list` — list all connections across all layers.
+// Handler for `yconn connections list` — list all connections across all layers.
 
 use std::collections::{HashMap, HashSet};
 
@@ -383,7 +383,7 @@ mod tests {
         assert_eq!(keys, vec!["user"]);
     }
 
-    // ─── Users table in yconn list tests ─────────────────────────────────────
+    // ─── Users table in yconn connections list tests ────────────────────────
 
     fn conn_yaml_with_user(name: &str, host: &str, user: &str) -> String {
         format!(

@@ -1,4 +1,4 @@
-// Handler for `yconn users show|add|edit` — manage the users: config section.
+// Handler for `yconn users list|add|edit` — manage the users: config section.
 
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -11,20 +11,20 @@ use crate::display::{Renderer, UserRow};
 
 // ─── Public entry points ──────────────────────────────────────────────────────
 
-/// `yconn users show` — list all user entries across layers with source and
+/// `yconn users list` — list all user entries across layers with source and
 /// shadowing info.
 ///
 /// When a `user` key is present in the merged `users:` map it appears as a
 /// normal row. When it is absent but `$USER` is set, a synthetic row with
 /// SOURCE `env (environment variable $USER)` is appended so the effective
 /// username is always visible.
-pub fn show(cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
+pub fn list(cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
     let rows = build_user_rows(cfg, std::env::var("USER").ok().as_deref());
     renderer.user_list(&rows);
     Ok(())
 }
 
-/// Build the [`UserRow`] vec for `yconn users show`.
+/// Build the [`UserRow`] vec for `yconn users list`.
 ///
 /// Converts `cfg.all_users` to rows, then — when no `user` key exists in
 /// `cfg.users` but `env_user` is `Some` — appends a synthetic env-var row.
