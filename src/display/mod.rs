@@ -7,7 +7,7 @@
 
 // ─── Input types ─────────────────────────────────────────────────────────────
 
-/// A row in the `yconn list` output table.
+/// A row in the `yconn connections list` output table.
 pub struct ConnectionRow {
     pub name: String,
     pub host: String,
@@ -60,7 +60,7 @@ pub struct ConfigStatus {
     pub docker: Option<DockerInfo>,
 }
 
-/// A row in the `yconn users show` output table.
+/// A row in the `yconn users list` output table.
 pub struct UserRow {
     pub key: String,
     pub value: String,
@@ -515,7 +515,7 @@ impl Renderer {
 
     // ── public API ────────────────────────────────────────────────────────────
 
-    /// Print the connection list table (`yconn list`).
+    /// Print the connection list table (`yconn connections list`).
     pub fn list(&self, rows: &[ConnectionRow]) {
         print!("{}", self.render_list(rows));
     }
@@ -530,7 +530,7 @@ impl Renderer {
         print!("{}", self.render_config_status(status));
     }
 
-    /// Print the user list table (`yconn users show`).
+    /// Print the user list table (`yconn users list`).
     ///
     /// Accepts a slice of [`UserRow`] so callers can inject synthetic rows
     /// (e.g. an env-var fallback for the `user` key).

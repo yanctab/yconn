@@ -1,4 +1,4 @@
-// Handler for `yconn list` — list all connections across all layers.
+// Handler for `yconn connections list` — list all connections across all layers.
 
 use std::collections::{HashMap, HashSet};
 
