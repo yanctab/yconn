@@ -2792,14 +2792,17 @@ fn test_e2e_install_system_layer_copies_all_fixture_connections() {
 
 // ── Orchestrator tests: verify selector flags control phase execution ─────────
 
-/// `yconn install --connections` runs only the connections phase.
+/// `yconn install --connections` runs only the connections phase and does not
+/// generate key files or touch ssh-config.
 #[test]
 fn install_orchestrator_connections_flag_only() {
     let env = TestEnv::new();
-    env.write_project_config(
-        "connections",
-        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: password\n    description: \"Alpha server\"\n",
+    let key_path = env.home.path().join("test_key");
+    let config = format!(
+        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: {}\n      generate_key: \"echo test > ${{key}}\"\n    description: \"Alpha server\"\n",
+        key_path.display()
     );
+    env.write_project_config("connections", &config);
 
     // Only --connections flag
     let out = env.run(&["install", "--connections"]);
@@ -2811,25 +2814,44 @@ fn install_orchestrator_connections_flag_only() {
         user_config.exists(),
         "connections phase must create user-layer config"
     );
+
+    // Verify keys phase did NOT run: key file should not exist
+    assert!(
+        !key_path.exists(),
+        "keys phase must not run with --connections flag only"
+    );
 }
 
-/// `yconn install --keys` runs only the keys phase.
+/// `yconn install --keys` runs only the keys phase and does not copy connection
+/// config or touch ssh-config.
 #[test]
 fn install_orchestrator_keys_flag_only() {
     let env = TestEnv::new();
+    let key_path = env.home.path().join("test_key");
 
     // Create a project config with a connection that has generate_key
-    env.write_project_config(
-        "connections",
-        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: ~/.ssh/test_key\n      generate_key: \"echo test > ${key}\"\n    description: \"Alpha server\"\n",
+    let config = format!(
+        "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: key\n      key: {}\n      generate_key: \"echo test > ${{key}}\"\n    description: \"Alpha server\"\n",
+        key_path.display()
     );
+    env.write_project_config("connections", &config);
 
     // Only --keys flag
     let out = env.run(&["install", "--keys"]);
     TestEnv::assert_ok(&out);
 
-    // Keys phase should have attempted to run (may succeed or fail depending on generate_key validity)
-    // The important thing is that the command completed without error in orchestrator logic
+    // Verify connections phase did NOT run: user-layer config should not be created
+    let user_config = env.xdg_config.path().join("yconn").join("connections.yaml");
+    assert!(
+        !user_config.exists(),
+        "connections phase must not run with --keys flag only"
+    );
+
+    // Verify keys phase ran: key file should exist
+    assert!(
+        key_path.exists(),
+        "keys phase must create key file with --keys flag"
+    );
 }
 
 /// `yconn install --ssh-config` runs only the ssh-config phase.
@@ -3507,4 +3529,154 @@ fn cli_users_list_works() {
         stdout.contains("devkey"),
         "output must contain another user key, got: {stdout}"
     );
+}
+
+// ─── Functional tests for keys install and umbrella install ─────────────────
+
+/// `yconn keys install` (no argument) generates key files for all connections
+/// that define a generate_key command; test asserts the key files exist after
+/// the command.
+#[test]
+fn test_keys_install_no_arg_generates_all_key_files() {
+    let env = TestEnv::new();
+    let key1_path = env.home.path().join("key1");
+    let key2_path = env.home.path().join("key2");
+
+    let config = format!(
+        concat!(
+            "version: 1\n",
+            "connections:\n",
+            "  srv1:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key1}\n",
+            "      generate_key: \"echo key1 > ${{key}}\"\n",
+            "    description: Server 1\n",
+            "  srv2:\n",
+            "    host: 10.0.0.2\n",
+            "    user: admin\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key2}\n",
+            "      generate_key: \"echo key2 > ${{key}}\"\n",
+            "    description: Server 2\n",
+        ),
+        key1 = key1_path.display(),
+        key2 = key2_path.display(),
+    );
+    env.write_project_config("connections", &config);
+
+    // Sanity: key files must not exist before keys install.
+    assert!(
+        !key1_path.exists(),
+        "key1 file must not exist before keys install"
+    );
+    assert!(
+        !key2_path.exists(),
+        "key2 file must not exist before keys install"
+    );
+
+    // Run `yconn keys install` with no argument.
+    let out = env.run(&["keys", "install"]);
+    TestEnv::assert_ok(&out);
+
+    // Verify both key files were created.
+    assert!(
+        key1_path.exists(),
+        "key1 file must be created by keys install"
+    );
+    assert!(
+        key2_path.exists(),
+        "key2 file must be created by keys install"
+    );
+}
+
+/// `yconn keys install <name>` named variant generates only the named
+/// connection's key file.
+#[test]
+fn test_keys_install_named_generates_single_key_file() {
+    let env = TestEnv::new();
+    let key1_path = env.home.path().join("key1");
+    let key2_path = env.home.path().join("key2");
+
+    let config = format!(
+        concat!(
+            "version: 1\n",
+            "connections:\n",
+            "  srv1:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key1}\n",
+            "      generate_key: \"echo key1 > ${{key}}\"\n",
+            "    description: Server 1\n",
+            "  srv2:\n",
+            "    host: 10.0.0.2\n",
+            "    user: admin\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key2}\n",
+            "      generate_key: \"echo key2 > ${{key}}\"\n",
+            "    description: Server 2\n",
+        ),
+        key1 = key1_path.display(),
+        key2 = key2_path.display(),
+    );
+    env.write_project_config("connections", &config);
+
+    // Run `yconn keys install srv1` — only generate key for srv1.
+    let out = env.run(&["keys", "install", "srv1"]);
+    TestEnv::assert_ok(&out);
+
+    // Verify only key1 was created.
+    assert!(
+        key1_path.exists(),
+        "key1 file must be created by keys install srv1"
+    );
+    assert!(
+        !key2_path.exists(),
+        "key2 file must not be created by keys install srv1"
+    );
+}
+
+/// `yconn install` (no selector flags) runs all three phases (connections,
+/// keys, ssh-config) end-to-end and exits 0.
+#[test]
+fn test_install_no_selectors_runs_all_phases() {
+    let env = TestEnv::new();
+    let key_path = env.home.path().join("test_key");
+
+    let config = format!(
+        concat!(
+            "version: 1\n",
+            "connections:\n",
+            "  alpha:\n",
+            "    host: 10.0.0.1\n",
+            "    user: deploy\n",
+            "    auth:\n",
+            "      type: key\n",
+            "      key: {key}\n",
+            "      generate_key: \"echo testkey > ${{key}}\"\n",
+            "    description: Alpha server\n",
+        ),
+        key = key_path.display(),
+    );
+    env.write_project_config("connections", &config);
+
+    // Run `yconn install` with no selector flags.
+    let out = env.run(&["install"]);
+    TestEnv::assert_ok(&out);
+
+    // Verify connections phase ran: user-layer config should exist.
+    let user_config = env.xdg_config.path().join("yconn").join("connections.yaml");
+    assert!(
+        user_config.exists(),
+        "connections phase must create user-layer config"
+    );
+
+    // Verify keys phase ran: key file should exist.
+    assert!(key_path.exists(), "keys phase must create key file");
 }
