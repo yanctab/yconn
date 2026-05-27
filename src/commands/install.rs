@@ -17,9 +17,52 @@ use crate::config::{Layer, LoadedConfig, UserEntry};
 use super::add::{entry_exists, insert_connection, set_private_permissions};
 use super::user::write_user_entry;
 
+// ─── Selector types ───────────────────────────────────────────────────────────
+
+/// Resolved selectors for install phases.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub struct InstallSelectors {
+    pub connections: bool,
+    pub keys: bool,
+    pub ssh_config: bool,
+}
+
+/// Resolve selector flags using the default-to-all rule.
+///
+/// When none of the flags are provided, all phases are enabled.
+/// When one or more flags are provided, only the flagged phases are enabled.
+#[allow(dead_code)]
+pub fn resolve_selectors(connections: bool, keys: bool, ssh_config: bool) -> InstallSelectors {
+    if !connections && !keys && !ssh_config {
+        // No flags provided — enable all phases (default-to-all rule).
+        InstallSelectors {
+            connections: true,
+            keys: true,
+            ssh_config: true,
+        }
+    } else {
+        // One or more flags provided — use only those that are true.
+        InstallSelectors {
+            connections,
+            keys,
+            ssh_config,
+        }
+    }
+}
+
 // ─── Public entry point ───────────────────────────────────────────────────────
 
-pub fn run(cfg: &LoadedConfig, layer: Option<LayerArg>) -> Result<()> {
+pub fn run(
+    cfg: &LoadedConfig,
+    layer: Option<LayerArg>,
+    connections: bool,
+    keys: bool,
+    ssh_config: bool,
+) -> Result<()> {
+    // Resolve selector flags using the default-to-all rule.
+    let _selectors = resolve_selectors(connections, keys, ssh_config);
+
     // Reject --layer project: installing into the project layer is circular.
     if matches!(layer, Some(LayerArg::Project)) {
         bail!("--layer project is not allowed for 'install'; the project layer is the source");
@@ -826,5 +869,85 @@ mod tests {
         // Value should be written.
         let target = fs::read_to_string(&target_file).unwrap();
         assert!(target.contains("alice"), "prompted value must be written");
+    }
+
+    // ── resolve_selectors tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_resolve_selectors_no_flags_enables_all_phases() {
+        let selectors = resolve_selectors(false, false, false);
+        assert_eq!(
+            selectors,
+            InstallSelectors {
+                connections: true,
+                keys: true,
+                ssh_config: true
+            }
+        );
+    }
+
+    #[test]
+    fn test_resolve_selectors_connections_only() {
+        let selectors = resolve_selectors(true, false, false);
+        assert_eq!(
+            selectors,
+            InstallSelectors {
+                connections: true,
+                keys: false,
+                ssh_config: false
+            }
+        );
+    }
+
+    #[test]
+    fn test_resolve_selectors_keys_only() {
+        let selectors = resolve_selectors(false, true, false);
+        assert_eq!(
+            selectors,
+            InstallSelectors {
+                connections: false,
+                keys: true,
+                ssh_config: false
+            }
+        );
+    }
+
+    #[test]
+    fn test_resolve_selectors_ssh_config_only() {
+        let selectors = resolve_selectors(false, false, true);
+        assert_eq!(
+            selectors,
+            InstallSelectors {
+                connections: false,
+                keys: false,
+                ssh_config: true
+            }
+        );
+    }
+
+    #[test]
+    fn test_resolve_selectors_connections_and_keys() {
+        let selectors = resolve_selectors(true, true, false);
+        assert_eq!(
+            selectors,
+            InstallSelectors {
+                connections: true,
+                keys: true,
+                ssh_config: false
+            }
+        );
+    }
+
+    #[test]
+    fn test_resolve_selectors_all_three_flags() {
+        let selectors = resolve_selectors(true, true, true);
+        assert_eq!(
+            selectors,
+            InstallSelectors {
+                connections: true,
+                keys: true,
+                ssh_config: true
+            }
+        );
     }
 }

@@ -143,6 +143,15 @@ pub enum Commands {
         /// Target layer to install connections into (user or system; project is not allowed)
         #[arg(long, value_name = "LAYER")]
         layer: Option<LayerArg>,
+        /// Install connections phase
+        #[arg(long)]
+        connections: bool,
+        /// Install keys phase
+        #[arg(long)]
+        keys: bool,
+        /// Install SSH config phase
+        #[arg(long)]
+        ssh_config: bool,
     },
 
     /// Audit and generate SSH keys via connection generate_key commands
