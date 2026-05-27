@@ -92,8 +92,8 @@ fn main() -> Result<()> {
             let cfg = load_and_warn(&renderer, verbose)?;
             match subcommand {
                 KeyCommands::List => commands::keys::list(&cfg, &renderer),
-                KeyCommands::Setup { name } => {
-                    commands::keys::setup(&cfg, &renderer, name.as_deref())
+                KeyCommands::Install { name } => {
+                    commands::keys::install(&cfg, &renderer, name.as_deref())
                 }
                 KeyCommands::Update { name } => commands::keys::update(
                     &cfg,

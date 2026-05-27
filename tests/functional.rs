@@ -2302,12 +2302,12 @@ fn keys_list_filters_to_generate_key_connections() {
     );
 }
 
-/// `yconn keys setup` (no arg) runs `generate_key` for every qualifying
+/// `yconn keys install` (no arg) runs `generate_key` for every qualifying
 /// connection and silently skips connections without `generate_key`.
-/// `yconn keys setup <name>` re-runs generation for a named connection after
+/// `yconn keys install <name>` re-runs generation for a named connection after
 /// the key has been deleted.
 #[test]
-fn keys_setup_all_and_named_create_key_files() {
+fn keys_install_all_and_named_create_key_files() {
     let env = TestEnv::new();
 
     let key_path = env.cwd.path().join("generated_key");
@@ -2340,7 +2340,7 @@ fn keys_setup_all_and_named_create_key_files() {
 
     // Iterate-all form: creates the key file for gen-conn, silently skips
     // pwauth.
-    let out = env.run(&["keys", "setup"]);
+    let out = env.run(&["keys", "install"]);
     TestEnv::assert_ok(&out);
     let contents = fs::read_to_string(&key_path).expect("key file must be created by setup");
     assert_eq!(
@@ -2350,16 +2350,16 @@ fn keys_setup_all_and_named_create_key_files() {
 
     // Delete and re-run via named form to verify the single-connection path.
     fs::remove_file(&key_path).unwrap();
-    let out = env.run(&["keys", "setup", "gen-conn"]);
+    let out = env.run(&["keys", "install", "gen-conn"]);
     TestEnv::assert_ok(&out);
     let contents = fs::read_to_string(&key_path).expect("key file must be recreated");
     assert_eq!(contents, "hello");
 }
 
-/// `yconn keys setup <name>` on a connection with no `generate_key` aborts
+/// `yconn keys install <name>` on a connection with no `generate_key` aborts
 /// non-zero and prints a clear error message.
 #[test]
-fn keys_setup_named_without_generate_key_fails() {
+fn keys_install_named_without_generate_key_fails() {
     let env = TestEnv::new();
 
     env.write_user_config(
@@ -2375,10 +2375,10 @@ fn keys_setup_named_without_generate_key_fails() {
         ),
     );
 
-    let out = env.run(&["keys", "setup", "pwauth"]);
+    let out = env.run(&["keys", "install", "pwauth"]);
     assert!(
         !out.status.success(),
-        "keys setup on no-generate_key connection must exit non-zero"
+        "keys install on no-generate_key connection must exit non-zero"
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
@@ -2387,11 +2387,11 @@ fn keys_setup_named_without_generate_key_fails() {
     );
 }
 
-/// `yconn keys setup <name>` emits a one-line notice containing the connection
+/// `yconn keys install <name>` emits a one-line notice containing the connection
 /// name, source layer label, and absolute source config path immediately before
 /// spawning the generate_key command.
 #[test]
-fn keys_setup_named_emits_layer_path_notice_before_spawn() {
+fn keys_install_named_emits_layer_path_notice_before_spawn() {
     let env = TestEnv::new();
 
     let key_path = env.cwd.path().join("gen_key");
@@ -2411,7 +2411,7 @@ fn keys_setup_named_emits_layer_path_notice_before_spawn() {
     );
     env.write_user_config("connections", &yaml);
 
-    let out = env.run(&["keys", "setup", "bastion"]);
+    let out = env.run(&["keys", "install", "bastion"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -2435,11 +2435,11 @@ fn keys_setup_named_emits_layer_path_notice_before_spawn() {
     );
 }
 
-/// `yconn keys setup` (iterate-all) emits a one-line notice once per
+/// `yconn keys install` (iterate-all) emits a one-line notice once per
 /// qualifying connection, before each spawn, and does not emit a notice for
 /// connections that are silently skipped (no generate_key).
 #[test]
-fn keys_setup_iterate_all_emits_notice_per_connection() {
+fn keys_install_iterate_all_emits_notice_per_connection() {
     let env = TestEnv::new();
 
     let key_a = env.cwd.path().join("key_a");
@@ -2475,7 +2475,7 @@ fn keys_setup_iterate_all_emits_notice_per_connection() {
     );
     env.write_user_config("connections", &yaml);
 
-    let out = env.run(&["keys", "setup"]);
+    let out = env.run(&["keys", "install"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -2496,13 +2496,13 @@ fn keys_setup_iterate_all_emits_notice_per_connection() {
     );
 }
 
-/// `yconn keys setup <name>` end-to-end against a key path whose parent does
+/// `yconn keys install <name>` end-to-end against a key path whose parent does
 /// not exist on disk: the parent directory is created before the shell command
 /// runs, the key file is written, and no extra output line appears compared to
 /// the pre-existing-parent case (criterion 5: a pre-existing parent produces
 /// no extra output line).
 #[test]
-fn keys_setup_named_creates_missing_parent_and_emits_no_extra_output() {
+fn keys_install_named_creates_missing_parent_and_emits_no_extra_output() {
     // Run 1: parent does not exist — must be created on demand.
     let env_missing = TestEnv::new();
     let missing_parent = env_missing.cwd.path().join("nested").join("parent");
@@ -2528,7 +2528,7 @@ fn keys_setup_named_creates_missing_parent_and_emits_no_extra_output() {
         "test precondition: parent dir must not exist"
     );
 
-    let out_missing = env_missing.run(&["keys", "setup", "gen-conn"]);
+    let out_missing = env_missing.run(&["keys", "install", "gen-conn"]);
     TestEnv::assert_ok(&out_missing);
 
     assert!(
@@ -2567,7 +2567,7 @@ fn keys_setup_named_creates_missing_parent_and_emits_no_extra_output() {
     );
     env_present.write_user_config("connections", &yaml_present);
 
-    let out_present = env_present.run(&["keys", "setup", "gen-conn"]);
+    let out_present = env_present.run(&["keys", "install", "gen-conn"]);
     TestEnv::assert_ok(&out_present);
 
     let stdout_present = String::from_utf8_lossy(&out_present.stdout);
@@ -2613,10 +2613,10 @@ fn keys_setup_named_creates_missing_parent_and_emits_no_extra_output() {
     );
 }
 
-/// `yconn keys setup <name>` with `generate_key` containing `${user}` must
+/// `yconn keys install <name>` with `generate_key` containing `${user}` must
 /// expand the placeholder to the connection's user value before executing.
 #[test]
-fn keys_setup_expands_user_placeholder_in_generate_key() {
+fn keys_install_expands_user_placeholder_in_generate_key() {
     let env = TestEnv::new();
 
     let key_path = env.cwd.path().join("generated_key");
@@ -2641,8 +2641,8 @@ fn keys_setup_expands_user_placeholder_in_generate_key() {
     // Sanity: file does not exist yet.
     assert!(!key_path.exists(), "key file must not exist before setup");
 
-    // Run keys setup for the connection with ${user} in generate_key.
-    let out = env.run(&["keys", "setup", "user-expansion"]);
+    // Run keys install for the connection with ${user} in generate_key.
+    let out = env.run(&["keys", "install", "user-expansion"]);
     TestEnv::assert_ok(&out);
 
     // The file should be created with content equal to the connection's user value.
@@ -2668,7 +2668,7 @@ fn keys_setup_expands_user_placeholder_in_generate_key() {
 // `${...}` user templates, `users:` map, docker block, group tags, optional
 // fields). It is loaded verbatim into the project layer for steps that need
 // the full feature surface, and a deterministic copy with a rewritten
-// `generate_key` is used for the `keys setup` step.
+// `generate_key` is used for the `keys install` step.
 //
 // The acceptance criteria allow splitting the original golden-path sequence
 // into several independent `#[test]` functions, each starting from fresh
@@ -2977,7 +2977,7 @@ fn test_e2e_ssh_config_install_disable_enable_uninstall() {
     );
 }
 
-// ── Step 14: `yconn keys setup <name>` with a deterministic generate_key ─────
+// ── Step 14: `yconn keys install <name>` with a deterministic generate_key ─────
 //
 // The shipped fixture's `bastion` connection uses a realistic but
 // non-executable command:
@@ -2986,7 +2986,7 @@ fn test_e2e_ssh_config_install_disable_enable_uninstall() {
 // deterministic `echo testkey > ${key}` and the key path points inside the
 // temp HOME so writes are scoped to the test.
 #[test]
-fn test_e2e_keys_setup_runs_generate_key_command() {
+fn test_e2e_keys_install_runs_generate_key_command() {
     let env = TestEnv::new();
     let test_key_path = env.home.path().join("e2e_bastion_key");
     let adapted = format!(
@@ -3014,15 +3014,15 @@ fn test_e2e_keys_setup_runs_generate_key_command() {
     // Sanity: key file must not exist before setup.
     assert!(
         !test_key_path.exists(),
-        "bastion key file must not exist before keys setup"
+        "bastion key file must not exist before keys install"
     );
 
-    let out = env.run(&["keys", "setup", "bastion"]);
+    let out = env.run(&["keys", "install", "bastion"]);
     TestEnv::assert_ok(&out);
 
     assert!(
         test_key_path.exists(),
-        "bastion key file must be created by keys setup"
+        "bastion key file must be created by keys install"
     );
     let key_content = fs::read_to_string(&test_key_path).unwrap();
     assert_eq!(

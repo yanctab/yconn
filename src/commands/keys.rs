@@ -1,11 +1,11 @@
 // src/commands/keys.rs
-// Handler for `yconn keys list|setup` — audit and generate SSH keys using
+// Handler for `yconn keys list|install` — audit and generate SSH keys using
 // connection `auth.generate_key` commands.
 //
 // `keys list` prints a table of every connection that has `generate_key`
 // configured. Connections without `generate_key` are omitted entirely.
 //
-// `keys setup` executes the `${key}`-expanded `generate_key` command for the
+// `keys install` executes the `${key}`-expanded `generate_key` command for the
 // named connection (or all qualifying connections when no name is supplied),
 // printing the command that was run and confirmation that the key was
 // written.
@@ -39,8 +39,8 @@ pub fn list(cfg: &LoadedConfig, renderer: &Renderer) -> Result<()> {
 /// - `name = None`: every connection is scanned; connections without
 ///   `generate_key` are silently skipped. A failure in one connection does
 ///   not abort the loop — subsequent connections are still processed.
-pub fn setup(cfg: &LoadedConfig, renderer: &Renderer, name: Option<&str>) -> Result<()> {
-    run_setup(cfg, renderer, name)
+pub fn install(cfg: &LoadedConfig, renderer: &Renderer, name: Option<&str>) -> Result<()> {
+    run_install(cfg, renderer, name)
 }
 
 /// Update (refresh) the SSH key by deleting the existing key file and
@@ -100,11 +100,11 @@ pub(crate) fn build_key_rows(cfg: &LoadedConfig) -> Vec<KeyRow> {
 /// supplied. The two forms have intentionally different error semantics:
 /// single-name is strict (missing `generate_key` aborts), iterate-all is
 /// lenient (missing `generate_key` is silently skipped).
-pub(crate) fn run_setup(cfg: &LoadedConfig, renderer: &Renderer, name: Option<&str>) -> Result<()> {
+pub(crate) fn run_install(cfg: &LoadedConfig, renderer: &Renderer, name: Option<&str>) -> Result<()> {
     match name {
-        Some(target) => run_setup_named(cfg, renderer, target),
+        Some(target) => run_install_named(cfg, renderer, target),
         None => {
-            run_setup_all(cfg, renderer);
+            run_install_all(cfg, renderer);
             Ok(())
         }
     }
@@ -112,7 +112,7 @@ pub(crate) fn run_setup(cfg: &LoadedConfig, renderer: &Renderer, name: Option<&s
 
 /// Strict single-connection form: missing `generate_key` or unknown name
 /// aborts non-zero.
-fn run_setup_named(cfg: &LoadedConfig, renderer: &Renderer, name: &str) -> Result<()> {
+fn run_install_named(cfg: &LoadedConfig, renderer: &Renderer, name: &str) -> Result<()> {
     let conn = cfg
         .find(name)
         .ok_or_else(|| anyhow!("unknown connection '{name}'"))?;
@@ -127,7 +127,7 @@ fn run_setup_named(cfg: &LoadedConfig, renderer: &Renderer, name: &str) -> Resul
 /// Lenient iterate-all form: silently skip connections without
 /// `generate_key`; continue past individual failures so one bad entry does
 /// not block the rest.
-fn run_setup_all(cfg: &LoadedConfig, renderer: &Renderer) {
+fn run_install_all(cfg: &LoadedConfig, renderer: &Renderer) {
     for conn in &cfg.connections {
         if conn.auth.generate_key().is_none() {
             continue;
@@ -307,7 +307,7 @@ fn process_connection(conn: &Connection, renderer: &Renderer) -> Result<()> {
 
     if !status.success() {
         let code = status.code().unwrap_or(-1);
-        bail!("keys setup {} failed (exit code {code})", conn.name);
+        bail!("keys install {} failed (exit code {code})", conn.name);
     }
 
     renderer.print_line(&format!("Key written to: {}", key_path));
@@ -465,10 +465,10 @@ mod tests {
         assert_eq!(rows[0].generate_key, "op read secret > ~/.ssh/github_key");
     }
 
-    // ── run_setup named connection — error semantics ─────────────────────────
+    // ── run_install named connection — error semantics ─────────────────────────
 
     #[test]
-    fn test_run_setup_named_without_generate_key_returns_error() {
+    fn test_run_install_named_without_generate_key_returns_error() {
         let root = TempDir::new().unwrap();
         let yconn = root.path().join(".yconn");
         fs::create_dir_all(&yconn).unwrap();
@@ -479,7 +479,7 @@ mod tests {
         );
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
-        let err = run_setup(&cfg, &no_color(), Some("srv")).unwrap_err();
+        let err = run_install(&cfg, &no_color(), Some("srv")).unwrap_err();
         assert!(
             err.to_string().contains("has no generate_key configured"),
             "error should mention missing generate_key, got: {err}"
@@ -487,11 +487,11 @@ mod tests {
     }
 
     #[test]
-    fn test_run_setup_unknown_name_returns_error() {
+    fn test_run_install_unknown_name_returns_error() {
         let cwd = TempDir::new().unwrap();
         let empty = TempDir::new().unwrap();
         let cfg = load(cwd.path(), None, empty.path());
-        let err = run_setup(&cfg, &no_color(), Some("nope")).unwrap_err();
+        let err = run_install(&cfg, &no_color(), Some("nope")).unwrap_err();
         assert!(
             err.to_string().contains("unknown connection"),
             "error should mention 'unknown connection', got: {err}"
@@ -503,7 +503,7 @@ mod tests {
     }
 
     #[test]
-    fn test_run_setup_iterate_all_silently_skips_without_generate_key() {
+    fn test_run_install_iterate_all_silently_skips_without_generate_key() {
         let root = TempDir::new().unwrap();
         let yconn = root.path().join(".yconn");
         fs::create_dir_all(&yconn).unwrap();
@@ -517,7 +517,7 @@ mod tests {
         let cfg = load(root.path(), None, empty.path());
         // Iterate-all returns Ok() with no output and no error — nothing
         // qualifies, so there is nothing to do.
-        run_setup(&cfg, &no_color(), None).unwrap();
+        run_install(&cfg, &no_color(), None).unwrap();
     }
 
     // ── process_connection: key file already exists → skip ───────────────────
@@ -544,7 +544,7 @@ mod tests {
         // The command must NOT be executed (which would write "fail" over the
         // existing content); instead the function returns Ok and the original
         // contents remain.
-        run_setup(&cfg, &no_color(), Some("srv")).unwrap();
+        run_install(&cfg, &no_color(), Some("srv")).unwrap();
         let contents = fs::read_to_string(&existing_key).unwrap();
         assert_eq!(
             contents, "pretend key",
@@ -572,7 +572,7 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
 
-        run_setup(&cfg, &no_color(), Some("srv")).unwrap();
+        run_install(&cfg, &no_color(), Some("srv")).unwrap();
         let contents = fs::read_to_string(&key_path).unwrap();
         assert_eq!(contents, "hello");
     }
@@ -596,9 +596,9 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
 
-        let err = run_setup(&cfg, &no_color(), Some("srv")).unwrap_err();
+        let err = run_install(&cfg, &no_color(), Some("srv")).unwrap_err();
         assert!(
-            err.to_string().contains("keys setup srv failed"),
+            err.to_string().contains("keys install srv failed"),
             "error message should mention failure with exit code, got: {err}"
         );
     }
@@ -627,7 +627,7 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
 
-        run_setup(&cfg, &no_color(), None).unwrap();
+        run_install(&cfg, &no_color(), None).unwrap();
         let contents = fs::read_to_string(&ok_key).expect("beta key must be produced");
         assert_eq!(contents, "done");
         assert!(
@@ -656,7 +656,7 @@ mod tests {
     // ── parent-directory creation ────────────────────────────────────────────
 
     #[test]
-    fn test_run_setup_named_creates_missing_parent_directory() {
+    fn test_run_install_named_creates_missing_parent_directory() {
         let root = TempDir::new().unwrap();
         let yconn = root.path().join(".yconn");
         fs::create_dir_all(&yconn).unwrap();
@@ -678,7 +678,7 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
 
-        run_setup(&cfg, &no_color(), Some("srv")).unwrap();
+        run_install(&cfg, &no_color(), Some("srv")).unwrap();
 
         assert!(
             parent.is_dir(),
@@ -690,7 +690,7 @@ mod tests {
     }
 
     #[test]
-    fn test_run_setup_iterate_all_creates_parent_per_connection() {
+    fn test_run_install_iterate_all_creates_parent_per_connection() {
         let root = TempDir::new().unwrap();
         let yconn = root.path().join(".yconn");
         fs::create_dir_all(&yconn).unwrap();
@@ -716,7 +716,7 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
 
-        run_setup(&cfg, &no_color(), None).unwrap();
+        run_install(&cfg, &no_color(), None).unwrap();
 
         assert!(alpha_parent.is_dir(), "alpha parent must be created");
         assert!(beta_parent.is_dir(), "beta parent must be created");
@@ -725,7 +725,7 @@ mod tests {
     }
 
     #[test]
-    fn test_run_setup_named_uncreatable_parent_returns_error_and_does_not_spawn() {
+    fn test_run_install_named_uncreatable_parent_returns_error_and_does_not_spawn() {
         let root = TempDir::new().unwrap();
         let yconn = root.path().join(".yconn");
         fs::create_dir_all(&yconn).unwrap();
@@ -749,7 +749,7 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
 
-        let err = run_setup(&cfg, &no_color(), Some("srv")).unwrap_err();
+        let err = run_install(&cfg, &no_color(), Some("srv")).unwrap_err();
         let msg = err.to_string();
         assert!(
             msg.contains("failed to create parent directory"),
@@ -762,7 +762,7 @@ mod tests {
     }
 
     #[test]
-    fn test_run_setup_iterate_all_uncreatable_parent_reports_and_continues() {
+    fn test_run_install_iterate_all_uncreatable_parent_reports_and_continues() {
         let root = TempDir::new().unwrap();
         let yconn = root.path().join(".yconn");
         fs::create_dir_all(&yconn).unwrap();
@@ -788,7 +788,7 @@ mod tests {
 
         // Iterate-all returns Ok; alpha's failure is reported via the
         // renderer's error channel, beta still succeeds.
-        run_setup(&cfg, &no_color(), None).unwrap();
+        run_install(&cfg, &no_color(), None).unwrap();
 
         assert!(
             beta_parent.is_dir(),

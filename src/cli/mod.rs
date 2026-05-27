@@ -204,8 +204,8 @@ pub enum KeyCommands {
 
     /// Run the `generate_key` command for one connection (by name) or all
     /// qualifying connections (no argument)
-    Setup {
-        /// Name of the connection to set up. When omitted, iterates every
+    Install {
+        /// Name of the connection to install. When omitted, iterates every
         /// connection that has a `generate_key` configured.
         name: Option<String>,
     },
