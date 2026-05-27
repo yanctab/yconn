@@ -1898,7 +1898,7 @@ fn install_copies_new_connections_to_user_layer() {
         "version: 1\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: deploy\n    auth:\n      type: password\n    description: \"Alpha server\"\n  beta:\n    host: 10.0.0.2\n    user: ops\n    auth:\n      type: password\n    description: \"Beta server\"\n",
     );
 
-    let out = env.run(&["install"]);
+    let out = env.run(&["install", "--connections"]);
     TestEnv::assert_ok(&out);
 
     let user_config = env.xdg_config.path().join("yconn").join("connections.yaml");
@@ -1946,7 +1946,7 @@ fn install_updates_existing_with_y_and_appends_new() {
     );
 
     // Answer `y` to the update prompt for alpha.
-    let out = env.run_with_stdin(&["install"], "y\n");
+    let out = env.run_with_stdin(&["install", "--connections"], "y\n");
     TestEnv::assert_ok(&out);
 
     let user_config = env.xdg_config.path().join("yconn").join("connections.yaml");
@@ -1989,7 +1989,7 @@ fn install_missing_user_variable_prompts_and_writes_value() {
     );
 
     // Provide the value for the missing user variable via stdin.
-    let out = env.run_with_stdin(&["install"], "alice\n");
+    let out = env.run_with_stdin(&["install", "--connections"], "alice\n");
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -2069,7 +2069,7 @@ fn install_project_users_block_resolves_variable_without_prompt() {
         "version: 1\n\nusers:\n  t1user: alice\n\nconnections:\n  alpha:\n    host: 10.0.0.1\n    user: \"${t1user}\"\n    auth:\n      type: password\n    description: \"Alpha server\"\n",
     );
 
-    let out = env.run(&["install"]);
+    let out = env.run(&["install", "--connections"]);
     TestEnv::assert_ok(&out);
 
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -2745,7 +2745,7 @@ fn test_e2e_install_user_layer_copies_all_fixture_connections() {
     let env = TestEnv::new();
     env.write_project_config("connections", E2E_FIXTURE);
 
-    let out = env.run(&["install", "--layer", "user"]);
+    let out = env.run(&["install", "--connections", "--layer", "user"]);
     TestEnv::assert_ok(&out);
 
     let user_yaml = env.xdg_config.path().join("yconn").join("connections.yaml");
@@ -2773,7 +2773,7 @@ fn test_e2e_install_system_layer_copies_all_fixture_connections() {
     let env = TestEnv::new();
     env.write_project_config("connections", E2E_FIXTURE);
 
-    let out = env.run_with_stdin(&["install", "--layer", "system"], "y\ny\ny\ny\ny\ny\ny\n");
+    let out = env.run_with_stdin(&["install", "--connections", "--layer", "system"], "y\ny\ny\ny\ny\ny\ny\n");
     TestEnv::assert_ok(&out);
 
     let system_yaml = env.system.path().join("connections.yaml");

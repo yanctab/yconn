@@ -1083,7 +1083,7 @@ mod tests {
     }
 
     #[test]
-    fn test_orchestrator_no_selectors_runs_all_phases_in_order() {
+    fn test_orchestrator_no_selectors_runs_keys_and_ssh_config() {
         let selectors = resolve_selectors(false, false, false);
         let mut tracker = PhaseTracker::new();
 
@@ -1091,7 +1091,7 @@ mod tests {
 
         assert_eq!(
             tracker.ran_phases(),
-            vec!["connections", "keys", "ssh_config"]
+            vec!["keys", "ssh_config"]
         );
     }
 
@@ -1117,7 +1117,7 @@ mod tests {
             Ok(())
         }
 
-        let selectors = resolve_selectors(false, false, false); // All phases enabled
+        let selectors = resolve_selectors(false, false, false); // Keys and ssh_config enabled
         let mut tracker = PhaseTracker::new();
 
         // Even though keys "fails" internally, ssh-config should still run.
@@ -1125,7 +1125,7 @@ mod tests {
 
         assert_eq!(
             tracker.ran_phases(),
-            vec!["connections", "keys", "ssh_config"]
+            vec!["keys", "ssh_config"]
         );
     }
 }
