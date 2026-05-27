@@ -3508,4 +3508,3 @@ fn cli_users_list_works() {
         "output must contain another user key, got: {stdout}"
     );
 }
-

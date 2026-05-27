@@ -81,8 +81,8 @@ pub fn run(
     // Find the project config file from the loaded config's project_dir.
     let project_file = project_config_path(cfg)?;
 
-    let home = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?;
+    let home =
+        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?;
 
     // Run phases in order: connections → keys → ssh-config
     // Each phase result is reported independently; failures don't stop subsequent phases.
@@ -124,14 +124,8 @@ pub fn run(
     }
 
     if selectors.ssh_config {
-        let result = super::ssh_config::run_install(
-            cfg,
-            renderer,
-            false,
-            &home,
-            &HashMap::new(),
-            false,
-        );
+        let result =
+            super::ssh_config::run_install(cfg, renderer, false, &home, &HashMap::new(), false);
         match result {
             Ok(()) => {
                 renderer.verbose("SSH config phase completed successfully");
