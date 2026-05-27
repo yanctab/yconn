@@ -417,8 +417,8 @@ Audit and generate SSH key material:
 
 ```
 yconn keys list
-yconn keys setup               # generate keys for every qualifying connection
-yconn keys setup bastion       # generate the key for a single connection
+yconn keys install               # generate keys for every qualifying connection
+yconn keys install bastion       # generate the key for a single connection
 ```
 
 Manage user key/value entries:
