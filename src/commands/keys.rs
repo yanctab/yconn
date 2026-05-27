@@ -20,6 +20,28 @@ use anyhow::{anyhow, bail, Result};
 use crate::config::{Connection, LoadedConfig};
 use crate::display::{KeyRow, Renderer};
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+/// Counts of key installation outcomes.
+#[derive(Debug, Default)]
+pub(crate) struct KeyCounts {
+    pub installed: usize,
+    pub skipped: usize,
+    pub failed: usize,
+}
+
+impl KeyCounts {
+    /// Create a new counter with all fields at zero.
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    /// Return the total number of processed keys (sum of all counts).
+    pub(crate) fn total(&self) -> usize {
+        self.installed + self.skipped + self.failed
+    }
+}
+
 // ─── Public entry points ─────────────────────────────────────────────────────
 
 /// Render the `keys list` table.
@@ -1086,5 +1108,34 @@ mod tests {
         update(&cfg, &no_color(), Some("srv"), &mut stdin).unwrap();
         let contents = fs::read_to_string(&key_path).unwrap();
         assert_eq!(contents, "ok");
+    }
+
+    // ── KeyCounts accumulation tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_key_counts_starts_at_zero() {
+        let counts = KeyCounts::new();
+        assert_eq!(counts.total(), 0);
+        assert_eq!(counts.installed, 0);
+        assert_eq!(counts.skipped, 0);
+        assert_eq!(counts.failed, 0);
+    }
+
+    #[test]
+    fn test_key_counts_increment_installed() {
+        let mut counts = KeyCounts::new();
+        counts.installed += 1;
+        counts.installed += 1;
+        assert_eq!(counts.installed, 2);
+        assert_eq!(counts.total(), 2);
+    }
+
+    #[test]
+    fn test_key_counts_total_sums_all_fields() {
+        let mut counts = KeyCounts::new();
+        counts.installed = 2;
+        counts.skipped = 1;
+        counts.failed = 3;
+        assert_eq!(counts.total(), 6);
     }
 }
