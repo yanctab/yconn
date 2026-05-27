@@ -100,7 +100,11 @@ pub(crate) fn build_key_rows(cfg: &LoadedConfig) -> Vec<KeyRow> {
 /// supplied. The two forms have intentionally different error semantics:
 /// single-name is strict (missing `generate_key` aborts), iterate-all is
 /// lenient (missing `generate_key` is silently skipped).
-pub(crate) fn run_install(cfg: &LoadedConfig, renderer: &Renderer, name: Option<&str>) -> Result<()> {
+pub(crate) fn run_install(
+    cfg: &LoadedConfig,
+    renderer: &Renderer,
+    name: Option<&str>,
+) -> Result<()> {
     match name {
         Some(target) => run_install_named(cfg, renderer, target),
         None => {
