@@ -62,6 +62,12 @@ yconn connections list
 # Connect
 yconn connect prod-web
 
+# Copy project connections into user layer
+yconn install
+
+# Copy only connections (skip keys and SSH config)
+yconn install --connections
+
 # Switch to a named group
 yconn groups use work
 ```
@@ -80,7 +86,7 @@ yconn groups use work
 | `yconn connections init` | Scaffold a `<group>.yaml` in `.yconn/` in the current directory |
 | `yconn install` | Copy project connections into the user (or system) layer |
 | `yconn keys list` | List connections that have a `generate_key` command configured |
-| `yconn keys setup [<name>]` | Run `generate_key` for one connection or every qualifying connection |
+| `yconn keys install [<name>]` | Run `generate_key` for one connection or every qualifying connection |
 | `yconn config` | Show active config files, their paths, and Docker status |
 | `yconn groups list` | Show all groups found across all layers |
 | `yconn groups use <name>` | Set the active group |
@@ -97,7 +103,9 @@ yconn groups use work
 
 Global flags: `--all`, `--verbose`
 
-Per-subcommand flags: `--layer system|user|project` (for `connections add`, `connections edit`, `connections remove`, `users add`, `users edit`)
+Per-subcommand flags:
+- `--layer system|user|project` — for `connections add`, `connections edit`, `connections remove`, `install`, `users add`, `users edit`
+- `--connections`, `--keys`, `--ssh-config` — selector flags for `install` (install only the selected phase; when none are provided, all phases run)
 
 ## Development
 

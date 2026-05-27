@@ -92,6 +92,23 @@ keys to be pre-baked into an image rather than distributed to developer machines
 : Show which config files are active, their paths, connection counts, and Docker
   bootstrap status.
 
+**install**
+: Copy project connections into a target layer (user or system). Reads the project
+  `.yconn/connections.yaml` discovered by walking upward from the current directory
+  and copies all connections into the target layer file. For each connection not
+  present in the target file, the entry is appended and a status line is printed.
+  For each connection whose name already exists in the target file, the user is
+  prompted interactively for each one. Non-existent project config causes the
+  command to exit with a clear error. Use **--layer** to target a specific layer
+  (defaults to user; project is not allowed since installing into the project
+  layer is circular). Use selector flags to control which components to install:
+
+  - **--connections** — install the connections: map
+  - **--keys** — install the keys: user entries from the project config
+  - **--ssh-config** — install SSH Host blocks to `~/.ssh/yconn-connections`
+
+  When no selector flags are provided, all three phases are performed.
+
 **group list**
 : Show all unique group values found across connection entries in all loaded
   layers, and which layers contain connections with each group tag.
@@ -116,7 +133,7 @@ keys to be pre-baked into an image rather than distributed to developer machines
   `generate_key` — including all password-auth entries and key/identity
   entries without a `generate_key` field — are omitted from the output.
 
-**keys setup** [*NAME*]
+**keys install** [*NAME*]
 : Generate SSH key material by executing `auth.generate_key` via `sh -c`.
   With no positional argument, every connection with `generate_key`
   configured is processed in turn — connections without `generate_key` are
@@ -124,7 +141,7 @@ keys to be pre-baked into an image rather than distributed to developer machines
   *NAME* is supplied, only that connection is processed: if *NAME* does not
   exist or has no `generate_key` configured, the command aborts non-zero
   without executing anything. When the target key file already exists on
-  disk, setup prints a skip notice and does not execute the command. A
+  disk, install prints a skip notice and does not execute the command. A
   non-zero exit code from the `generate_key` command fails that entry; in
   iterate-all mode subsequent entries are still attempted, in named mode
   the command exits non-zero.
@@ -400,8 +417,8 @@ Audit and generate SSH key material:
 
 ```
 yconn keys list
-yconn keys setup               # generate keys for every qualifying connection
-yconn keys setup bastion       # generate the key for a single connection
+yconn keys install               # generate keys for every qualifying connection
+yconn keys install bastion       # generate the key for a single connection
 ```
 
 Manage user key/value entries:
