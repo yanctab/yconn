@@ -3673,11 +3673,11 @@ fn test_install_no_selectors_runs_all_phases() {
     let out = env.run(&["install"]);
     TestEnv::assert_ok(&out);
 
-    // Verify connections phase ran: user-layer config should exist.
+    // Verify connections phase did NOT run: user-layer config should NOT exist.
     let user_config = env.xdg_config.path().join("yconn").join("connections.yaml");
     assert!(
-        user_config.exists(),
-        "connections phase must create user-layer config"
+        !user_config.exists(),
+        "connections phase must NOT run with no flags"
     );
 
     // Verify keys phase ran: key file should exist.
