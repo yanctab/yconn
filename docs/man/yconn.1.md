@@ -193,7 +193,7 @@ keys to be pre-baked into an image rather than distributed to developer machines
 # OPTIONS
 
 **--all**
-: Include shadowed entries in the output of **yconn list**.
+: Include shadowed entries in the output of **yconn connections list**.
 
 **--verbose**
 : Print config loading decisions, merge resolution, and the full Docker
@@ -321,13 +321,13 @@ If present in the user layer, it is ignored with a warning.
 List connections from all layers:
 
 ```
-yconn list
+yconn connections list
 ```
 
 Filter connections by group:
 
 ```
-yconn list --group work
+yconn connections list --group work
 ```
 
 Connect to a host:
@@ -345,7 +345,7 @@ yconn connect web-prod-01
 Show all details for a connection (including shadowed):
 
 ```
-yconn list --all
+yconn connections list --all
 yconn connections show bastion
 ```
 
@@ -407,7 +407,7 @@ yconn keys setup bastion       # generate the key for a single connection
 Manage user key/value entries:
 
 ```
-yconn users show
+yconn users list
 yconn users add
 yconn users add --layer project
 yconn users edit testuser

@@ -270,28 +270,28 @@ When `--verbose` is passed, the full `docker run` command is printed before exec
 
 | Command | Description |
 |---|---|
-| `yconn list` | List all connections across all layers |
+| `yconn connections list` | List all connections across all layers |
 | `yconn connect <name>` | Connect to a named host |
-| `yconn show <name>` | Show the resolved config for a connection (no secrets printed) |
-| `yconn add` | Interactive wizard to add a connection to a chosen layer |
-| `yconn edit <name>` | Open the connection's source config file in `$EDITOR` |
-| `yconn remove <name>` | Remove a connection (prompts for layer if ambiguous) |
-| `yconn init` | Scaffold a `<group>.yaml` in `.yconn/` in the current directory |
+| `yconn connections show <name>` | Show the resolved config for a connection (no secrets printed) |
+| `yconn connections add` | Interactive wizard to add a connection to a chosen layer |
+| `yconn connections edit <name>` | Open the connection's source config file in `$EDITOR` |
+| `yconn connections remove <name>` | Remove a connection (prompts for layer if ambiguous) |
+| `yconn connections init` | Scaffold a `<group>.yaml` in `.yconn/` in the current directory |
 | `yconn config` | Show which config files are active, their paths, and Docker status |
-| `yconn group list` | Show all groups found across all layers |
-| `yconn group use <n>` | Set the active group (persisted to `~/.config/yconn/session.yml`) |
-| `yconn group clear` | Remove `active_group` from `session.yml`, revert to default (`connections`) |
-| `yconn group current` | Print the active group name and resolved config file paths |
+| `yconn groups list` | Show all groups found across all layers |
+| `yconn groups use <n>` | Set the active group (persisted to `~/.config/yconn/session.yml`) |
+| `yconn groups clear` | Remove `active_group` from `session.yml`, revert to default (`connections`) |
+| `yconn groups current` | Print the active group name and resolved config file paths |
 
 Global flags:
 - `--layer system|user|project` — target a specific layer for `add`, `edit`, `remove`
-- `--all` — include shadowed entries in `yconn list`
+- `--all` — include shadowed entries in `yconn connections list`
 - `--no-color` — disable colored output
 - `--verbose` — print config loading decisions, merge resolution, and full Docker invocation
 
 ---
 
-## `yconn list` Output Format
+## `yconn connections list` Output Format
 
 Standard output (active connections only):
 

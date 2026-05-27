@@ -40,7 +40,7 @@ Groups are inline tags on individual connections. Each connection entry can carr
 `group:` field. All connections live in `connections.yaml` regardless of their group.
 
 The active group (set with `yconn groups use <name>`) acts as a filter: when a group is locked,
-`yconn list` shows only connections whose `group:` field matches. `yconn list --all` always
+`yconn connections list` shows only connections whose `group:` field matches. `yconn connections list --all` always
 shows all connections regardless of any lock.
 
 See `yconn groups --help` or [docs/examples.md](examples.md#inline-group-field-usage) for group
@@ -107,7 +107,7 @@ connections:
 | `auth` | yes | `key` or `password` |
 | `key` | if `auth: key` | Path to private key file. When using Docker, the path is resolved inside the container. |
 | `description` | yes | Human-readable description of the connection |
-| `group` | no | Inline group tag. Used to filter connections with `yconn groups use` or `yconn list --group`. |
+| `group` | no | Inline group tag. Used to filter connections with `yconn groups use` or `yconn connections list --group`. |
 | `link` | no | URL for further documentation (wiki, runbook, etc.) |
 
 ---
@@ -249,7 +249,7 @@ all generated Host blocks. `--skip-user` and `--user` are mutually exclusive.
 
 ```bash
 # List all user entries across all layers
-yconn users show
+yconn users list
 
 # Add a user entry interactively (defaults to user layer)
 yconn users add
