@@ -86,7 +86,7 @@ fn main() -> Result<()> {
             ssh_config,
         } => {
             let cfg = load_and_warn(&renderer, verbose)?;
-            commands::install::run(&cfg, layer, connections, keys, ssh_config)
+            commands::install::run(&cfg, &renderer, layer, connections, keys, ssh_config)
         }
         Commands::Keys { subcommand } => {
             let cfg = load_and_warn(&renderer, verbose)?;
