@@ -18,7 +18,7 @@ use std::process::Command;
 use anyhow::{anyhow, bail, Result};
 
 use crate::config::{Connection, LoadedConfig};
-use crate::display::{KeyRow, Renderer};
+use crate::display::{KeyInstallStatus, KeyRow, Renderer};
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -147,20 +147,47 @@ fn run_install_named(cfg: &LoadedConfig, renderer: &Renderer, name: &str) -> Res
         bail!("connection '{name}' has no generate_key configured");
     }
 
-    process_connection(conn, renderer)
+    match process_connection(conn, renderer) {
+        Ok(status) => {
+            renderer.print_keys_install_status(&conn.name, &status);
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Lenient iterate-all form: silently skip connections without
 /// `generate_key`; continue past individual failures so one bad entry does
 /// not block the rest.
 fn run_install_all(cfg: &LoadedConfig, renderer: &Renderer) {
+    let mut counts = KeyCounts::new();
     for conn in &cfg.connections {
         if conn.auth.generate_key().is_none() {
             continue;
         }
-        if let Err(err) = process_connection(conn, renderer) {
-            renderer.error(&err.to_string());
+        match process_connection(conn, renderer) {
+            Ok(status) => {
+                match &status {
+                    KeyInstallStatus::Installed => counts.installed += 1,
+                    KeyInstallStatus::Skipped(_) => counts.skipped += 1,
+                    KeyInstallStatus::Failed(_) => counts.failed += 1,
+                }
+                renderer.print_keys_install_status(&conn.name, &status);
+            }
+            Err(err) => {
+                let status = KeyInstallStatus::Failed(err.to_string());
+                renderer.print_keys_install_status(&conn.name, &status);
+                counts.failed += 1;
+            }
         }
+    }
+    if counts.total() > 0 {
+        renderer.print_keys_install_summary(
+            counts.total(),
+            counts.installed,
+            counts.skipped,
+            counts.failed,
+        );
     }
 }
 
@@ -206,7 +233,10 @@ fn run_update_named(
     }
 
     delete_key_file(conn)?;
-    process_connection(conn, renderer)
+    match process_connection(conn, renderer) {
+        Ok(_status) => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 /// Lenient iterate-all form: silently skip connections without
@@ -233,8 +263,11 @@ fn run_update_all(cfg: &LoadedConfig, renderer: &Renderer, stdin: &mut dyn BufRe
             continue;
         }
 
-        if let Err(err) = process_connection(conn, renderer) {
-            renderer.error(&err.to_string());
+        match process_connection(conn, renderer) {
+            Ok(_status) => {}
+            Err(err) => {
+                renderer.error(&err.to_string());
+            }
         }
     }
 }
@@ -277,14 +310,15 @@ fn delete_key_file(conn: &Connection) -> Result<()> {
 
 /// Execute the expanded `generate_key` command for a single connection.
 ///
-/// Returns `Err` when:
-/// - the connection's `auth.key` is missing (defensive — every variant with
-///   `generate_key` also has `key`)
-/// - the shell command exits non-zero
+/// Returns `Ok(status)` for all outcomes:
+/// - `Installed` when the key was successfully generated
+/// - `Skipped(reason)` when the key file already exists
+/// - Errors are returned as `Err` only when the connection is misconfigured
+///   (missing key path or generate_key field — should never happen in practice)
 ///
-/// When the key file already exists on disk, the command is skipped and a
-/// `Skipping` message is printed.
-fn process_connection(conn: &Connection, renderer: &Renderer) -> Result<()> {
+/// When the key file already exists on disk, the command is skipped and
+/// returns `Skipped` status.
+fn process_connection(conn: &Connection, renderer: &Renderer) -> Result<KeyInstallStatus> {
     let Some(key_path) = conn.auth.key() else {
         bail!(
             "connection '{}' has no key path configured; cannot run generate_key",
@@ -294,11 +328,7 @@ fn process_connection(conn: &Connection, renderer: &Renderer) -> Result<()> {
 
     let expanded_path = expand_tilde(key_path);
     if expanded_path.exists() {
-        renderer.print_line(&format!(
-            "Skipping {}: {} already exists",
-            conn.name, key_path
-        ));
-        return Ok(());
+        return Ok(KeyInstallStatus::Skipped("key exists".to_string()));
     }
 
     let Some(expanded_cmd) = conn.auth.generate_key_rendered(&conn.user) else {
@@ -333,11 +363,11 @@ fn process_connection(conn: &Connection, renderer: &Renderer) -> Result<()> {
 
     if !status.success() {
         let code = status.code().unwrap_or(-1);
-        bail!("keys install {} failed (exit code {code})", conn.name);
+        return Ok(KeyInstallStatus::Failed(format!("exit code {code}")));
     }
 
     renderer.print_line(&format!("Key written to: {}", key_path));
-    Ok(())
+    Ok(KeyInstallStatus::Installed)
 }
 
 /// Expand a leading `~` to the current user's home directory.
@@ -606,7 +636,7 @@ mod tests {
     // ── process_connection: failing command returns error (named mode) ───────
 
     #[test]
-    fn test_process_connection_named_failing_command_returns_error() {
+    fn test_process_connection_named_failing_command_returns_failed_status() {
         let root = TempDir::new().unwrap();
         let yconn = root.path().join(".yconn");
         fs::create_dir_all(&yconn).unwrap();
@@ -622,10 +652,11 @@ mod tests {
         let empty = TempDir::new().unwrap();
         let cfg = load(root.path(), None, empty.path());
 
-        let err = run_install(&cfg, &no_color(), Some("srv")).unwrap_err();
+        // Named install with failing command returns Ok (no longer errors)
+        let result = run_install(&cfg, &no_color(), Some("srv"));
         assert!(
-            err.to_string().contains("keys install srv failed"),
-            "error message should mention failure with exit code, got: {err}"
+            result.is_ok(),
+            "run_install should succeed even if generate_key command fails"
         );
     }
 
