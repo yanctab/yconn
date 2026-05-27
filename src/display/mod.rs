@@ -98,6 +98,17 @@ pub struct GroupCurrentStatus {
     pub layers: Vec<LayerCurrentInfo>,
 }
 
+/// Status of a single key install operation.
+#[derive(Debug, Clone)]
+pub enum KeyInstallStatus {
+    /// Key was successfully installed
+    Installed,
+    /// Key was skipped with a reason
+    Skipped(String),
+    /// Key installation failed with a reason
+    Failed(String),
+}
+
 // ─── ANSI helpers ────────────────────────────────────────────────────────────
 
 const RESET: &str = "\x1b[0m";
@@ -436,6 +447,38 @@ impl Renderer {
         format!("Setting up '{name}' [{layer}] ({source_path})\n")
     }
 
+    // ── keys install status ───────────────────────────────────────────────────
+
+    /// Format a one-line status for a key install operation.
+    ///
+    /// Returns a single line showing the connection name and status:
+    /// - `prod-web  ✓ installed`
+    /// - `staging-db  – skipped (key exists)`
+    /// - `bastion  ✗ failed: command exited with code 1`
+    fn render_keys_install_status(&self, name: &str, status: &KeyInstallStatus) -> String {
+        match status {
+            KeyInstallStatus::Installed => format!("{}  ✓ installed\n", name),
+            KeyInstallStatus::Skipped(reason) => format!("{}  – skipped ({})\n", name, reason),
+            KeyInstallStatus::Failed(reason) => format!("{}  ✗ failed: {}\n", name, reason),
+        }
+    }
+
+    /// Format a summary line showing totals for key install operations.
+    ///
+    /// Returns a line like: `3 connections: 2 installed, 1 skipped, 0 failed`
+    fn render_keys_install_summary(
+        &self,
+        total: usize,
+        installed: usize,
+        skipped: usize,
+        failed: usize,
+    ) -> String {
+        format!(
+            "{} connections: {} installed, {} skipped, {} failed\n",
+            total, installed, skipped, failed
+        )
+    }
+
     // ── group list ────────────────────────────────────────────────────────────
 
     fn render_group_list(&self, groups: &[GroupRow]) -> String {
@@ -558,6 +601,29 @@ impl Renderer {
         print!(
             "{}",
             self.render_keys_setup_notice(name, layer, source_path)
+        );
+    }
+
+    /// Print a one-line status for a key install operation.
+    ///
+    /// Each connection processed by `yconn keys install` produces one status line.
+    pub fn print_keys_install_status(&self, name: &str, status: &KeyInstallStatus) {
+        print!("{}", self.render_keys_install_status(name, status));
+    }
+
+    /// Print a summary line showing totals for key install operations.
+    ///
+    /// After all connections are processed, a summary is printed showing counts.
+    pub fn print_keys_install_summary(
+        &self,
+        total: usize,
+        installed: usize,
+        skipped: usize,
+        failed: usize,
+    ) {
+        print!(
+            "{}",
+            self.render_keys_install_summary(total, installed, skipped, failed)
         );
     }
 
@@ -999,5 +1065,44 @@ mod tests {
     #[test]
     fn test_verbose_ssh_cmd_empty() {
         Renderer::new(false).verbose_ssh_cmd(&[]);
+    }
+
+    // ── key install status tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_render_keys_install_status_installed() {
+        let out = r().render_keys_install_status("prod-web", &KeyInstallStatus::Installed);
+        assert!(out.contains("prod-web"));
+        assert!(out.contains("✓"));
+        assert!(out.contains("installed"));
+    }
+
+    #[test]
+    fn test_render_keys_install_status_skipped() {
+        let status = KeyInstallStatus::Skipped("key exists".to_string());
+        let out = r().render_keys_install_status("staging-db", &status);
+        assert!(out.contains("staging-db"));
+        assert!(out.contains("–")); // en-dash
+        assert!(out.contains("skipped"));
+        assert!(out.contains("key exists"));
+    }
+
+    #[test]
+    fn test_render_keys_install_status_failed() {
+        let status = KeyInstallStatus::Failed("command exited with code 1".to_string());
+        let out = r().render_keys_install_status("bastion", &status);
+        assert!(out.contains("bastion"));
+        assert!(out.contains("✗"));
+        assert!(out.contains("failed"));
+        assert!(out.contains("command exited with code 1"));
+    }
+
+    #[test]
+    fn test_render_keys_install_summary() {
+        let out = r().render_keys_install_summary(3, 2, 1, 0);
+        assert!(out.contains("3 connections"));
+        assert!(out.contains("2 installed"));
+        assert!(out.contains("1 skipped"));
+        assert!(out.contains("0 failed"));
     }
 }
